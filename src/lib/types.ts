@@ -23,20 +23,16 @@ export type Block = {
 export type SpecialKind =
   | 'star'
   | 'x2'
-  | 'div2'
   | 'jolly'
   | 'bombColor'
   | 'laser'
   | 'wall'
-  | 'magnet'
   | 'vortex'
   | 'shuffle'
   | 'clone'
-  | 'virus'
-  | 'safeX5'
 
-export type MultiplierMode = 'x2' | 'div2' | null
-export type PendingMode = 'x2' | 'div2' | 'jolly' | 'bombColor' | 'clone' | 'virus' | 'safeX5' | null
+export type MultiplierMode = 'x2' | null
+export type PendingMode = 'x2' | 'jolly' | 'bombColor' | 'clone' | null
 
 export type Special = {
   id: string
@@ -52,7 +48,7 @@ export const WALL_DURATION_MS = 5000
 export const SPECIAL_DURATION_MS = 3000
 export const VIRUS_INTERVAL_MS = 3000
 
-export const EXPLOSION_VALUE = 16
+export const EXPLOSION_VALUE = 32
 export const EXPLOSION_SPAWN_COUNT = 4
 
 export type Cell = Block | Special | null
@@ -69,5 +65,5 @@ export function isWall(c: Cell): c is Special {
 
 export const GRID_SIZE = 8
 
-export const PENDING_KINDS: Set<SpecialKind> = new Set<SpecialKind>(['x2','div2','jolly','bombColor','clone','virus','safeX5'])
-export const INSTANT_KINDS: Set<SpecialKind> = new Set<SpecialKind>(['laser','magnet','vortex','shuffle','wall'])
+export const PENDING_KINDS: Set<SpecialKind> = new Set<SpecialKind>(['x2','jolly','bombColor','clone'])
+export const INSTANT_KINDS: Set<SpecialKind> = new Set<SpecialKind>(['laser','vortex','shuffle','wall'])

@@ -20,17 +20,13 @@ const specialSchema = z.object({
   kind: z.enum([
     'star',
     'x2',
-    'div2',
     'jolly',
     'bombColor',
     'laser',
     'wall',
-    'magnet',
     'vortex',
     'shuffle',
     'clone',
-    'virus',
-    'safeX5',
   ]),
   hp: z.number().optional(),
 });
@@ -41,10 +37,10 @@ const saveSchema = z.object({
   bestScore: z.number().int().min(0).optional(),
   gameOver: z.boolean(),
   pendingMode: z
-    .enum(['x2', 'div2', 'jolly', 'bombColor', 'clone', 'virus', 'safeX5'])
+    .enum(['x2', 'jolly', 'bombColor', 'clone'])
     .nullable()
     .optional(),
-  pendingMultiplier: z.enum(['x2', 'div2']).nullable().optional(),
+  pendingMultiplier: z.enum(['x2']).nullable().optional(),
   pendingSafeX5: z.boolean().optional(),
 });
 
@@ -73,12 +69,19 @@ function migrate(data: any): PersistedSave {
   if (data.pendingMultiplier && !data.pendingMode) {
     data.pendingMode = data.pendingMultiplier;
   }
-  // ensure kind default
+  // drop obsolete pending modes (div2, virus, safeX5)
+  const validPending = new Set(['x2','jolly','bombColor','clone']);
+  if (data.pendingMode && !validPending.has(data.pendingMode)) data.pendingMode = null;
+  if (data.pendingMultiplier && !validPending.has(data.pendingMultiplier)) data.pendingMultiplier = null;
+  // ensure kind default + migrate obsolete specials (div2/magnet/virus/safeX5 -> star)
+  const validKinds = new Set(['star','x2','jolly','bombColor','laser','wall','vortex','shuffle','clone']);
+  const remap: Record<string,string> = { div2:'x2', magnet:'shuffle', virus:'clone', safeX5:'star' };
   if (data.grid) {
     data.grid = data.grid.map((row: any[]) =>
       row.map((c: any) => {
         if (!c) return null;
         if ('expiresAt' in c && !('kind' in c)) return { ...c, kind: 'star' };
+        if (c.kind && !validKinds.has(c.kind)) return { ...c, kind: remap[c.kind] ?? 'star' };
         if (c.kind === 'wall' && c.hp == null) return { ...c, hp: 2 };
         return c;
       })

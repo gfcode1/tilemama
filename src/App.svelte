@@ -2,10 +2,11 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import { fade } from 'svelte/transition'
   import confetti from 'canvas-confetti'
-  import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove } from './lib/game.svelte'
-  import { GRID_SIZE } from './lib/types'
-  import { sfx, isMuted, toggleMute } from './lib/sfx'
-  import { GameScheduler } from './services/scheduler'
+import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine } from './lib/game.svelte'
+import { GRID_SIZE } from './lib/types'
+import { sfx, isMuted, toggleMute } from './lib/sfx'
+import { GameScheduler } from './services/scheduler'
+import { resolveMove } from './core/engine/MoveResolver'
   import Tile from './components/board/Tile.svelte'
   import SpecialTile from './components/board/SpecialTile.svelte'
   import DragTrail from './components/board/DragTrail.svelte'
@@ -13,6 +14,7 @@
   import Header from './components/hud/Header.svelte'
   import Help from './components/hud/Help.svelte'
   import Onboarding from './components/modals/Onboarding.svelte'
+  import ParticleLayer from './components/effects/ParticleLayer.svelte'
 
   let drag = $state<{ id: string; sx: number; sy: number; cx: number; cy: number } | null>(null)
   let trail = $state<{ x: number; y: number }[]>([])
@@ -21,14 +23,16 @@
   let popIds = $state<Set<string>>(new Set())
   let spawnIds = $state<Set<string>>(new Set())
   let prevIds = new Set<string>()
-  let scorePops = $state<{ id: string; x: number; y: number; text: string }[]>([])
+  let scorePops = $state<{ id: string; x: number; y: number; main: string; sub?: string; kind: string }[]>([])
   let shake = $state(false)
+  let flash = $state(false)
   let muted = $state(isMuted())
   let showOnboard = $state(false)
   let showHelp = $state(false)
   let swipeDir = $state<'N'|'S'|'E'|'W'| null>(null)
 
   let scheduler: GameScheduler | null = null
+  let particleLayer: ParticleLayer | null = null
 
   function resetPrevIds() {
     prevIds = new Set([...game.blocks.map(b=>b.id), ...game.specials.map(s=>s.id)])
@@ -146,11 +150,15 @@
     shake = true
     setTimeout(()=> shake=false, isError ? 420 : 320)
   }
+  function triggerFlash() {
+    flash = true
+    setTimeout(()=> flash=false, 120)
+  }
 
-  function pushScorePop(x:number,y:number,text:string) {
+  function pushScorePop(x:number,y:number,main:string, sub?:string, kind='merge') {
     const id = Math.random().toString(36).slice(2)
-    scorePops = [...scorePops, { id, x, y, text }]
-    setTimeout(()=> { scorePops = scorePops.filter(p=>p.id!==id) }, 900)
+    scorePops = [...scorePops, { id, x, y, main, sub, kind }]
+    setTimeout(()=> { scorePops = scorePops.filter(p=>p.id!==id) }, kind==='boom' ? 1100 : 900)
   }
 
   function handlePointerDown(e: PointerEvent, id: string) {
@@ -198,14 +206,13 @@
           const mode = res.mode
           sfx.apply()
           if (mode==='x2') burstAt(origin, '#a78bfa', 30, 0.9)
-          else if (mode==='div2') burstAt(origin, '#fb923c', 30, 0.9)
           else if (mode==='jolly') burstAt(origin, '#f472b6', 28, 0.85)
           else if (mode==='bombColor') burstAt(origin, '#fb7185', 44, 1.05)
           else if (mode==='clone') burstAt(origin, '#34d399', 26, 0.85)
-          else if (mode==='virus') burstAt(origin, '#a3e635', 26, 0.85)
-          else if (mode==='safeX5') burstAt(origin, '#fde68a', 32, 0.9)
-          if (res.exploded) { burstAt(origin, null, 42, 1.05); sfx.explode(); pushScorePop(block.x, block.y, 'BOOM!') }
-          else pushScorePop(block.x, block.y, mode==='x2'?'×2!': mode==='div2'?'÷2': mode==='bombColor'?'BOOM!':'OK!')
+          const comboTxt = (res as any).combo >1 ? `×${(res as any).combo}` : undefined
+          const mult = (res as any).multiplier
+          if (res.exploded) { burstAt(origin, null, 42, 1.05); sfx.explode(); pushScorePop(block.x, block.y, 'BOOM!', comboTxt ? `${comboTxt} +${res.scoreGain ?? ''}` : `+${res.scoreGain ?? 32}`, 'boom') }
+          else pushScorePop(block.x, block.y, mode==='x2'?'×2!': mode==='bombColor'?'BOOM!':'OK!', comboTxt, 'pending')
           try { navigator.vibrate?.(60) } catch {}
         } else { sfx.error(); triggerShake(true) }
       }
@@ -226,9 +233,12 @@
         popIds.add(id)
         setTimeout(()=> popIds.delete(id), 420)
         sfx.merge()
-        pushScorePop(res.finalX, res.finalY, `+${res.scoreGain}`)
-        burstAt(origin, candyHex(before?.color ?? 'green'), 16, 0.65)
-        if (game.pendingSafeX5) burstAt(origin, '#fde68a', 18, 0.65)
+        const c = (res as any).combo as number|undefined
+        const m = (res as any).multiplier as number|undefined
+        const sub = c && c>1 ? `×${c}${m && m>1 ? ` · ×${m.toFixed(2).replace(/\.00$/,'')}` : ''}` : (m && m>1 ? `×${m.toFixed(2)}` : undefined)
+        const kind = (res as any).combo && (res as any).combo>=3 ? 'boom' : 'merge'
+        pushScorePop(res.finalX, res.finalY, `+${res.scoreGain}`, sub, kind)
+        burstAt(origin, candyHex(before?.color ?? 'green'), c && c>1 ? 22 : 16, c && c>1 ? 0.8 : 0.65)
       } else if (res.moved) {
         sfx.move()
       } else {
@@ -238,8 +248,11 @@
       if (res.exploded) {
         sfx.explode()
         triggerShake()
+        triggerFlash()
         burstAt(origin, null, 44, 1.05)
-        pushScorePop(res.finalX,res.finalY,'16!')
+        const c = (res as any).combo as number|undefined
+        const sub = c && c>1 ? `×${c} COMBO!` : undefined
+        pushScorePop(res.finalX,res.finalY,'BOOM 32!', sub, 'boom')
       }
       if (res.hitWall) {
         if (res.wallDestroyed) sfx.wallBreak(); else sfx.wallHit()
@@ -254,12 +267,11 @@
           const col = pendingColor(res.activatedPending)
           burstAt(origin, col, 32, 0.9)
           try { navigator.vibrate?.(80) } catch {}
-        } else if (k==='star') { sfx.star(); burstAt(origin, '#f0abfc', 32, 0.9); pushScorePop(res.finalX,res.finalY,'★ +4') }
-        else if (k==='laser') { sfx.laser(); burstAt(origin, '#fb7185', 34, 0.9) }
-        else if (k==='magnet') { sfx.magnet(); burstAt(origin, '#22d3ee', 28, 0.85) }
-        else if (k==='vortex') { sfx.vortex(); burstAt(origin, '#a78bfa', 30, 0.9) }
-        else if (k==='shuffle') { sfx.shuffle(); burstAt(origin, '#fbbf24', 30, 0.9) }
-        else { sfx.bonus(); burstAt(origin, specialHex(k??'star'), 26, 0.85) }
+        } else if (k==='star') { sfx.star(); burstKind(origin, 'star', 32); pushScorePop(res.finalX,res.finalY,'★ +4', undefined, 'star') }
+        else if (k==='laser') { sfx.laser(); burstKind(origin, 'laser', 34) }
+        else if (k==='vortex') { sfx.vortex(); burstKind(origin, 'vortex', 30) }
+        else if (k==='shuffle') { sfx.shuffle(); burstKind(origin, 'shuffle', 30) }
+        else { sfx.bonus(); burstKind(origin, k??'star', 26) }
       }
     } else {
       sfx.error()
@@ -277,8 +289,9 @@
   }
   function burstAt(origin: {x:number,y:number}, hex: string | null, count:number, spreadMul:number) {
     const colors = hex ? [hex] : ['#fb7185','#34d399','#fde68a','#7dd3fc','#f472b6','#fbbf24']
+    const capped = Math.min(count, 40)
     confetti({
-      particleCount: count,
+      particleCount: Math.min(capped, 28),
       spread: 72 * spreadMul,
       startVelocity: 28,
       ticks: 150,
@@ -291,9 +304,19 @@
     if (count > 30) {
       setTimeout(()=> confetti({ particleCount: 16, spread: 120, origin, colors, scalar:0.72, ticks:120, zIndex:60 }), 80)
     }
+    try {
+      const kind = !hex ? 'boom' : 'merge'
+      ;(particleLayer as any)?.burst?.(origin, kind, Math.min(count, 24), hex)
+    } catch {}
+  }
+  function burstKind(origin:{x:number,y:number}, kind:string, count:number) {
+    const map:Record<string,string> = { star:'#f0abfc', laser:'#f43f5e', vortex:'#a78bfa', shuffle:'#fbbf24', wall:'#a8a29e', clone:'#34d399', bombColor:'#fb7185', jolly:'#f472b6', x2:'#a78bfa' }
+    const hex = map[kind] ?? null
+    burstAt(origin, hex, count, 0.9)
+    try { (particleLayer as any)?.burst?.(origin, kind==='star'?'star': kind==='laser'?'laser': kind==='vortex'?'vortex': kind==='shuffle'?'shuffle': kind==='wall'?'wall': kind==='bombColor'?'bomb': kind==='clone'?'merge': 'default', Math.min(count, 28), hex) } catch {}
   }
   function triggerSpecialSpawn(x:number,y:number, kind: string){
-    burstAt(posToOrigin(x,y), specialHex(kind), 12, 0.55)
+    burstKind(posToOrigin(x,y), kind, 14)
     sfx.bonus()
   }
   function candyHex(c:string){
@@ -301,23 +324,62 @@
   }
   function specialHex(k:string){
     const m:Record<string,string> = {
-      star:'#f0abfc', x2:'#a78bfa', div2:'#fb923c', jolly:'#f472b6', bombColor:'#fb7185',
-      laser:'#f43f5e', wall:'#a8a29e', magnet:'#22d3ee', vortex:'#a78bfa', shuffle:'#fbbf24',
-      clone:'#34d399', virus:'#a3e635', safeX5:'#fde68a'
+      star:'#f0abfc', x2:'#a78bfa', jolly:'#f472b6', bombColor:'#fb7185',
+      laser:'#f43f5e', wall:'#a8a29e', vortex:'#a78bfa', shuffle:'#fbbf24',
+      clone:'#34d399'
     }
     return m[k] ?? '#f0abfc'
   }
   function pendingColor(m:string){
-    const col:Record<string,string> = { x2:'#a78bfa', div2:'#fb923c', jolly:'#f472b6', bombColor:'#fb7185', clone:'#34d399', virus:'#a3e635', safeX5:'#fde68a' }
+    const col:Record<string,string> = { x2:'#a78bfa', jolly:'#f472b6', bombColor:'#fb7185', clone:'#34d399' }
     return col[m] ?? '#a78bfa'
   }
 
   let bannerIcon = $derived.by(() => {
     if (!game.pendingMode) return ''
-    const map:Record<string,string> = { x2:'×2', div2:'÷2', jolly:'🌈', bombColor:'💣', clone:'➕', virus:'☢️', safeX5:'💎' }
+    const map:Record<string,string> = { x2:'×2', jolly:'🌈', bombColor:'💣', clone:'➕' }
     return map[game.pendingMode] ?? '×2'
   })
   let canUndoNow = $derived(canUndo() && !game.pendingMode && !game.gameOver)
+
+  // --- preview trajectory (ghost) during drag ---
+  type Preview = { finalX:number; finalY:number; type:string; path:{x:number;y:number}[] }
+  let preview = $derived.by<Preview|null>(() => {
+    if (!drag || !swipeDir || game.pendingMode || game.gameOver) return null
+    const block = game.blocks.find(b=>b.id===drag!.id)
+    if (!block) return null
+    // grid copy without the moving block
+    const g = engine.grid.map(row=> [...row]) as any
+    g[block.y][block.x] = null
+    const r: any = resolveMove(block as any, swipeDir as any, g)
+    // build path from origin stepwise to final (exclusive origin)
+    const path: {x:number;y:number}[] = []
+    let cx = block.x, cy = block.y
+    const dx = swipeDir==='E'?1:swipeDir==='W'?-1:0
+    const dy = swipeDir==='S'?1:swipeDir==='N'?-1:0
+    // for wall/special/merge path goes up to before or onto target depending
+    const targetX = r.type==='wall' ? (r as any).beforeX : r.finalX
+    const targetY = r.type==='wall' ? (r as any).beforeY : r.finalY
+    // if slide with moved false and no movement, no preview
+    if (r.type==='slide' && !(r as any).moved) return null
+    while (cx!==targetX || cy!==targetY) {
+      cx += dx; cy += dy
+      if (cx<0||cx>=GRID_SIZE||cy<0||cy>=GRID_SIZE) break
+      path.push({x:cx,y:cy})
+    }
+    // for merge/special, include final target cell already in path (handled)
+    // for wall destroyed case, final is wall cell itself, but we stopped before -> add final if destroyed preview not known; keep as path above
+    // If path empty (adjacent immediate hit), still show final
+    if (path.length===0) path.push({x:r.finalX, y:r.finalY})
+    return { finalX: r.finalX, finalY: r.finalY, type: r.type, path }
+  })
+
+  let pendingIds = $derived.by<Set<string>>(() => {
+    if (!game.pendingMode) return new Set()
+    // all blocks valid for current 4 pending modes, but bombColor highlights same color stronger
+    // keep all valid; selective styling done in Tile via pendingMode
+    return new Set(game.blocks.map(b=>b.id))
+  })
 </script>
 
 <div class="candy-orbs min-h-[100dvh] min-h-[100svh] flex flex-col items-center px-3 pt-[max(10px,env(safe-area-inset-top))] pb-[max(10px,env(safe-area-inset-bottom))] gap-3 select-none touch-manipulation">
@@ -336,7 +398,7 @@
 
   <Help showHelp={showHelp} />
 
-  <div bind:this={gridEl} role="grid" aria-label="Griglia di gioco 8x8" class="w-full max-w-[420px] aspect-square bg-[#fffbeb] border-2 border-[#fed7aa] rounded-[28px] p-[7px] shadow-[0_18px_40px_rgba(124,45,18,0.14),0_6px_14px_rgba(124,45,18,0.08)] relative overflow-hidden {shake ? 'animate-[candyShake_320ms_ease]' : ''} {game.pendingMode ? 'ring-2 ' + (game.pendingMode==='x2' ? 'ring-violet-300' : game.pendingMode==='div2' ? 'ring-orange-300' : game.pendingMode==='jolly' ? 'ring-pink-300' : game.pendingMode==='bombColor' ? 'ring-rose-300' : game.pendingMode==='virus' ? 'ring-lime-300' : game.pendingMode==='safeX5' ? 'ring-amber-300' : 'ring-cyan-300') : ''}"
+  <div bind:this={gridEl} role="grid" aria-label="Griglia di gioco 8x8" class="w-full max-w-[420px] aspect-square bg-[#fffbeb] border-2 border-[#fed7aa] rounded-[28px] p-[7px] shadow-[0_18px_40px_rgba(124,45,18,0.14),0_6px_14px_rgba(124,45,18,0.08)] relative overflow-hidden {shake ? 'animate-[candyShake_420ms_ease]' : ''} {game.pendingMode ? 'ring-2 ' + (game.pendingMode==='x2' ? 'ring-violet-300' : game.pendingMode==='jolly' ? 'ring-pink-300' : game.pendingMode==='bombColor' ? 'ring-rose-300' : 'ring-cyan-300') : ''}"
     style="touch-action:none"
   >
     <div class="absolute inset-[7px] grid gap-1" style="grid-template-columns: repeat({GRID_SIZE}, minmax(0,1fr)); grid-template-rows: repeat({GRID_SIZE}, minmax(0,1fr));">
@@ -346,23 +408,44 @@
     </div>
 
     <DragTrail trail={trail} swipeDir={swipeDir} gridEl={gridEl} />
+    <ParticleLayer bind:this={particleLayer} gridEl={gridEl} />
 
+    {#if preview}
+      <!-- path dots -->
+      {#each preview.path as p (p.x + '-' + p.y)}
+        <div class="absolute rounded-[14px] pointer-events-none z-[6] border-2 border-dashed {preview.type==='merge' ? 'bg-emerald-400/20 border-emerald-400/50' : preview.type==='special' ? 'bg-fuchsia-400/20 border-fuchsia-400/50' : preview.type==='wall' ? 'bg-stone-400/20 border-stone-400/50' : 'bg-orange-200/40 border-orange-300/60'}"
+          style="{cellPos(p.x,p.y)}; transition: opacity 120ms ease;"></div>
+      {/each}
+      <!-- ghost at final -->
+      <div class="absolute rounded-[14px] pointer-events-none z-[6] border-[3px] bg-white/55 backdrop-blur-[1px] flex items-center justify-center {preview.type==='merge' ? 'border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]' : preview.type==='special' ? 'border-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.45)]' : preview.type==='wall' ? 'border-stone-500' : 'border-orange-400/70 border-dashed'}"
+        style="{cellPos(preview.finalX, preview.finalY)}">
+        <span class="text-[11px] font-black {preview.type==='merge' ? 'text-emerald-700' : preview.type==='special' ? 'text-fuchsia-700' : preview.type==='wall' ? 'text-stone-600' : 'text-orange-600/70'}">{preview.type==='merge' ? '＋' : preview.type==='special' ? '★' : preview.type==='wall' ? '🧱' : '→'}</span>
+      </div>
+    {/if}
+
+    {#if flash}
+      <div class="absolute inset-0 bg-white/80 z-20 pointer-events-none animate-[flash_120ms_ease] rounded-[28px]"></div>
+    {/if}
     <div class="absolute inset-[7px]">
       {#each game.blocks as b (b.id)}
         {@const isPop = popIds.has(b.id)}
         {@const isSpawn = spawnIds.has(b.id)}
-        {@const isVibrating = !!game.pendingMode}
-        {@const tier = b.value >= 8 ? 5 : b.value >=4 ? 4 : b.value >=2?3: b.value>=1?2:1}
-        <Tile block={b} isPop={isPop} isSpawn={isSpawn} isVibrating={isVibrating} bannerIcon={bannerIcon} tier={tier} posStyle={cellPos(b.x,b.y)} onPointerDown={handlePointerDown} />
+        {@const isPending = pendingIds.has(b.id)}
+        {@const isVibrating = false}
+        {@const tier = b.value >= 16 ? 5 : b.value >=8 ? 4 : b.value >=4?3: b.value>=1?2:1}
+        <Tile block={b} isPop={isPop} isSpawn={isSpawn} isVibrating={isVibrating} isPending={isPending} pendingMode={game.pendingMode} bannerIcon={bannerIcon} tier={tier} posStyle={cellPos(b.x,b.y)} onPointerDown={handlePointerDown} />
       {/each}
       {#each game.specials as s (s.id)}
         <SpecialTile special={s} posStyle={cellPos(s.x,s.y)} />
       {/each}
 
       {#each scorePops as p (p.id)}
-        <div class="absolute z-30 pointer-events-none game-font font-black text-[13px] text-[#431407] bg-white border border-orange-200 rounded-full px-2 py-0.5 shadow-md"
-          style="left: calc({p.x} * ((100% - 28px)/8 + 4px) + ((100% - 28px)/8)/2); top: calc({p.y} * ((100% - 28px)/8 + 4px)); transform: translate(-50%, -8px); animation: candyFloat 900ms ease forwards;">
-          {p.text}
+        <div class="absolute z-30 pointer-events-none flex flex-col items-center -translate-x-1/2 {p.kind==='boom' ? 'animate-[candyBoom_900ms_cubic-bezier(.34,1.56,.64,1)_forwards]' : 'animate-[candyFloat_900ms_ease_forwards]'}"
+          style="left: calc({p.x} * ((100% - 28px)/8 + 4px) + ((100% - 28px)/8)/2); top: calc({p.y} * ((100% - 28px)/8 + 4px));">
+          <span class="game-font font-black {p.kind==='boom' ? 'text-[18px] text-white bg-gradient-to-br from-rose-500 to-amber-400 border-2 border-white shadow-[0_6px_16px_rgba(244,63,94,0.4)] rounded-full px-3 py-1' : p.kind==='star' ? 'text-[13px] text-[#431407] bg-white border border-orange-200 rounded-full px-2 py-0.5 shadow-md' : 'text-[15px] text-white bg-[#431407] border border-white/20 rounded-full px-2.5 py-0.5 shadow-[0_6px_14px_rgba(0,0,0,0.25)]'} leading-none">{p.main}</span>
+          {#if p.sub}
+            <span class="mt-0.5 game-font font-black text-[10px] leading-none {p.kind==='boom' ? 'text-amber-900 bg-white rounded-full px-1.5 py-0.5 border border-amber-200' : 'text-white bg-black/70 rounded-full px-1.5 py-0.5'}">{p.sub}</span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -381,9 +464,7 @@
   {#if game.pendingMode}
     <PendingBanner mode={game.pendingMode} onCancel={handleCancelPending} />
   {/if}
-  {#if game.pendingSafeX5}
-    <div class="w-full max-w-[420px] bg-gradient-to-r from-amber-200 to-yellow-400 border-2 border-white text-[#431407] rounded-2xl px-3 py-2 text-xs font-black text-center shadow-sm" in:fade={{duration:150}}>💎 Prossimo merge ×5 attivo!</div>
-  {/if}
+
 
   <div class="w-full max-w-[420px] grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
     <button type="button" onclick={handleUndo} disabled={!canUndoNow} class="bg-white border-2 border-orange-200 rounded-2xl py-3 font-black text-sm shadow-sm active:scale-[0.98] transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:grayscale">
@@ -394,7 +475,7 @@
   </div>
 
   <footer class="w-full max-w-[420px] text-[10px] font-bold tracking-wide text-[#9a3412]/45 text-center px-2 leading-relaxed">
-    PWA installabile · {game.blocks.length} blocchi · {game.specials.length} speciali {#if game.pendingMode}· {game.pendingMode}{/if} {#if game.pendingSafeX5}· ×5{/if}
+    PWA installabile · {game.blocks.length} blocchi · {game.specials.length} speciali {#if game.pendingMode}· {game.pendingMode}{/if}
   </footer>
 
   {#if showOnboard}
