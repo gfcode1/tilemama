@@ -17,11 +17,14 @@ body {
     radial-gradient(900px 700px at 50% 115%, rgba(253, 230, 138, 0.28), transparent 60%),
     linear-gradient(180deg, var(--candy-bg) 0%, var(--candy-bg-2) 100%);
   color: var(--candy-ink);
-  font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
   touch-action: manipulation;
 }
+
+/* tabular numbers for scores */
+.tabular-nums { font-variant-numeric: tabular-nums; }
 
 #app {
   min-height: 100dvh;
@@ -54,8 +57,18 @@ body {
 }
 
 .game-font {
-  font-family: 'Fredoka', 'Nunito', sans-serif;
+  font-family: var(--font-display);
   letter-spacing: -0.02em;
+}
+
+/* responsive orbs: reduce on larger screens / landscape */
+@media (min-width: 640px) {
+  .candy-orbs::before { opacity: 0.32; }
+  .candy-orbs::after { opacity: 0.28; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .candy-orbs::before { width: 320px; height: 320px; }
+  .candy-orbs::after { width: 380px; height: 380px; }
 }
 
 /* tile gloss + bouncy */
@@ -78,6 +91,15 @@ body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0));
   opacity: 0.85;
   pointer-events: none;
+}
+
+/* hint hand nudge */
+@keyframes hintNudge { 0%,100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
+@keyframes scorePop { 0% { transform: scale(0.85); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
 /* animations */

@@ -2,19 +2,29 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import { fade } from 'svelte/transition'
   import confetti from 'canvas-confetti'
-import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine } from './lib/game.svelte'
-import { GRID_SIZE } from './lib/types'
-import { sfx, isMuted, toggleMute } from './lib/sfx'
-import { GameScheduler } from './services/scheduler'
-import { resolveMove } from './core/engine/MoveResolver'
+  import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine } from './lib/game.svelte'
+  import { GRID_SIZE } from './lib/types'
+  import { sfx, isMuted, toggleMute } from './lib/sfx'
+  import { GameScheduler } from './services/scheduler'
+  import { resolveMove } from './core/engine/MoveResolver'
+  import { loadPersisted } from './services/persistence'
+  import { loadLeaderboard, pushScore } from './services/leaderboard'
+  import type { LeaderboardEntry } from './services/leaderboard'
   import Tile from './components/board/Tile.svelte'
   import SpecialTile from './components/board/SpecialTile.svelte'
   import DragTrail from './components/board/DragTrail.svelte'
   import PendingBanner from './components/hud/PendingBanner.svelte'
-  import Header from './components/hud/Header.svelte'
   import Help from './components/hud/Help.svelte'
   import Onboarding from './components/modals/Onboarding.svelte'
   import ParticleLayer from './components/effects/ParticleLayer.svelte'
+  import ComboBar from './components/hud/ComboBar.svelte'
+  import TitleMenu from './components/menu/TitleMenu.svelte'
+  import GameHeader from './components/menu/GameHeader.svelte'
+  import PauseSheet from './components/menu/PauseSheet.svelte'
+  import Leaderboard from './components/menu/Leaderboard.svelte'
+  import Credits from './components/menu/Credits.svelte'
+
+  type View = 'menu' | 'game' | 'help' | 'leaderboard' | 'credits'
 
   let drag = $state<{ id: string; sx: number; sy: number; cx: number; cy: number } | null>(null)
   let trail = $state<{ x: number; y: number }[]>([])
@@ -28,28 +38,41 @@ import { resolveMove } from './core/engine/MoveResolver'
   let flash = $state(false)
   let muted = $state(isMuted())
   let showOnboard = $state(false)
-  let showHelp = $state(false)
   let swipeDir = $state<'N'|'S'|'E'|'W'| null>(null)
 
+  let view = $state<View>('menu')
+  let hasSave = $state(false)
+  let showPause = $state(false)
+  let leaderboardEntries = $state<LeaderboardEntry[]>([])
+
   let scheduler: GameScheduler | null = null
-  let particleLayer: ParticleLayer | null = null
+  let particleLayer: ParticleLayer | null = $state(null)
 
   function resetPrevIds() {
     prevIds = new Set([...game.blocks.map(b=>b.id), ...game.specials.map(s=>s.id)])
   }
 
+  function refreshHasSave() {
+    try {
+      const s = loadPersisted()
+      hasSave = !!s && !s.gameOver && !!s.grid?.flat().some((c: any) => c !== null)
+    } catch { hasSave = false }
+  }
+
   onMount(() => {
     initGame()
     resetPrevIds()
+    refreshHasSave()
+    leaderboardEntries = loadLeaderboard()
     try { if (!localStorage.getItem('tilemama_seen')) showOnboard = true } catch {}
     scheduler = new GameScheduler({
       onStar: () => {
-        if (game.pendingMode || game.gameOver) return
+        if (view !== 'game' || game.pendingMode || game.gameOver) return
         const s = spawnStar()
         if (s) triggerSpecialSpawn(s.x, s.y, s.kind)
       },
       onBonus: () => {
-        if (game.pendingMode || game.gameOver) return
+        if (view !== 'game' || game.pendingMode || game.gameOver) return
         const s = spawnBonus()
         if (s) triggerSpecialSpawn(s.x, s.y, s.kind)
       },
@@ -76,9 +99,23 @@ import { resolveMove } from './core/engine/MoveResolver'
     window.removeEventListener('keydown', handleKeydown as any)
   })
 
-  // pause scheduler when pending or gameOver
   $effect(() => {
-    scheduler?.setPaused(!!game.pendingMode || !!game.gameOver)
+    const paused = view !== 'game' || !!game.pendingMode || !!game.gameOver || showPause
+    scheduler?.setPaused(paused)
+  })
+
+  // push to leaderboard on gameOver (avoid duplicate on initial load)
+  let prevGameOver = $state(false)
+  let leaderboardPushedForScore = $state<number | null>(null)
+  $effect(() => {
+    const go = game.gameOver
+    if (go && !prevGameOver && game.score > 0 && leaderboardPushedForScore !== game.score) {
+      const maxTile = Math.max(0, ...game.blocks.map(b=>b.value))
+      leaderboardEntries = pushScore(game.score, maxTile)
+      leaderboardPushedForScore = game.score
+    }
+    if (!go) leaderboardPushedForScore = null
+    prevGameOver = go
   })
 
   function dismissOnboard() {
@@ -92,9 +129,41 @@ import { resolveMove } from './core/engine/MoveResolver'
     spawnIds.clear()
     popIds.clear()
     scorePops = []
+    view = 'game'
+    showPause = false
+    refreshHasSave()
     const c=centerOfGrid()
     sfx.pop(); sfx.star()
     confetti({particleCount:28, spread:70, origin:c, colors:['#fb7185','#34d399','#fde68a','#7dd3fc','#f472b6'], scalar:0.95, zIndex:50})
+  }
+
+  function handleContinue() {
+    // initGame already loaded save; just go to game view
+    resetPrevIds()
+    view = 'game'
+    showPause = false
+  }
+
+  function handleGoMenu() {
+    if (view === 'game' && !game.gameOver && game.blocks.length > 0) {
+      showPause = true
+      return
+    }
+    view = 'menu'
+    showPause = false
+    refreshHasSave()
+    leaderboardEntries = loadLeaderboard()
+  }
+
+  function handleResume() { showPause = false; sfx.tap() }
+  function handleRestartFromPause() {
+    showPause = false
+    handleNewGame()
+  }
+  function handleExitToMenu() {
+    showPause = false
+    view = 'menu'
+    refreshHasSave()
   }
 
   function handleUndo() {
@@ -109,11 +178,16 @@ import { resolveMove } from './core/engine/MoveResolver'
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleUndo(); }
-    else if (e.key === 'n' || e.key === 'N') { if (!game.pendingMode) handleNewGame(); }
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if(view==='game') handleUndo(); }
     else if (e.key === 'm' || e.key === 'M') handleToggleMute()
-    else if (e.key === '?') showHelp = !showHelp
-    else if (e.key === 'Escape' && game.pendingMode) { cancelPending(); sfx.tap(); }
+    else if (e.key === 'Escape') {
+      if (showPause) { showPause = false; return }
+      if (game.pendingMode) { cancelPending(); sfx.tap(); return }
+      if (view === 'game') handleGoMenu()
+      else if (view !== 'menu') view = 'menu'
+    }
+    else if (e.key === '?' && view==='game') { view='help' }
+    else if (e.key === '?' && view==='help') { view='game' }
   }
 
   // detect new spawns for scale-in
@@ -139,10 +213,14 @@ import { resolveMove } from './core/engine/MoveResolver'
   function posToOrigin(x:number, y:number) {
     if (!gridEl) return { x: 0.5, y: 0.5 }
     const r = gridEl.getBoundingClientRect()
-    const cellW = (r.width - 14 - 28) / 8
-    const gap = 4
-    const cx = r.left + 7 + x * (cellW + gap) + cellW/2
-    const cy = r.top + 7 + y * (cellW + gap) + cellW/2
+    const style = getComputedStyle(gridEl)
+    const pad = parseFloat(style.paddingLeft) || 7
+    // measure actual gap from computed --grid-gap fallback 4
+    const gap = parseFloat(style.getPropertyValue('--grid-gap')) || 4
+    const innerW = r.width - pad * 2
+    const cellW = (innerW - gap * 7) / 8
+    const cx = r.left + pad + x * (cellW + gap) + cellW/2
+    const cy = r.top + pad + y * (cellW + gap) + cellW/2
     return { x: cx / window.innerWidth, y: cy / window.innerHeight }
   }
 
@@ -162,7 +240,7 @@ import { resolveMove } from './core/engine/MoveResolver'
   }
 
   function handlePointerDown(e: PointerEvent, id: string) {
-    if (game.gameOver || animating) return
+    if (view !== 'game' || game.gameOver || animating) return
     const r = gridEl?.getBoundingClientRect()
     const cx = r ? e.clientX - r.left : 0
     const cy = r ? e.clientY - r.top : 0
@@ -210,7 +288,6 @@ import { resolveMove } from './core/engine/MoveResolver'
           else if (mode==='bombColor') burstAt(origin, '#fb7185', 44, 1.05)
           else if (mode==='clone') burstAt(origin, '#34d399', 26, 0.85)
           const comboTxt = (res as any).combo >1 ? `×${(res as any).combo}` : undefined
-          const mult = (res as any).multiplier
           if (res.exploded) { burstAt(origin, null, 42, 1.05); sfx.explode(); pushScorePop(block.x, block.y, 'BOOM!', comboTxt ? `${comboTxt} +${res.scoreGain ?? ''}` : `+${res.scoreGain ?? 32}`, 'boom') }
           else pushScorePop(block.x, block.y, mode==='x2'?'×2!': mode==='bombColor'?'BOOM!':'OK!', comboTxt, 'pending')
           try { navigator.vibrate?.(60) } catch {}
@@ -322,14 +399,6 @@ import { resolveMove } from './core/engine/MoveResolver'
   function candyHex(c:string){
     return { green:'#34d399', red:'#fb7185', yellow:'#fde68a', blue:'#7dd3fc' }[c] ?? '#fde68a'
   }
-  function specialHex(k:string){
-    const m:Record<string,string> = {
-      star:'#f0abfc', x2:'#a78bfa', jolly:'#f472b6', bombColor:'#fb7185',
-      laser:'#f43f5e', wall:'#a8a29e', vortex:'#a78bfa', shuffle:'#fbbf24',
-      clone:'#34d399'
-    }
-    return m[k] ?? '#f0abfc'
-  }
   function pendingColor(m:string){
     const col:Record<string,string> = { x2:'#a78bfa', jolly:'#f472b6', bombColor:'#fb7185', clone:'#34d399' }
     return col[m] ?? '#a78bfa'
@@ -342,143 +411,174 @@ import { resolveMove } from './core/engine/MoveResolver'
   })
   let canUndoNow = $derived(canUndo() && !game.pendingMode && !game.gameOver)
 
-  // --- preview trajectory (ghost) during drag ---
   type Preview = { finalX:number; finalY:number; type:string; path:{x:number;y:number}[] }
   let preview = $derived.by<Preview|null>(() => {
-    if (!drag || !swipeDir || game.pendingMode || game.gameOver) return null
+    if (view!=='game' || !drag || !swipeDir || game.pendingMode || game.gameOver) return null
     const block = game.blocks.find(b=>b.id===drag!.id)
     if (!block) return null
-    // grid copy without the moving block
     const g = engine.grid.map(row=> [...row]) as any
     g[block.y][block.x] = null
     const r: any = resolveMove(block as any, swipeDir as any, g)
-    // build path from origin stepwise to final (exclusive origin)
     const path: {x:number;y:number}[] = []
     let cx = block.x, cy = block.y
     const dx = swipeDir==='E'?1:swipeDir==='W'?-1:0
     const dy = swipeDir==='S'?1:swipeDir==='N'?-1:0
-    // for wall/special/merge path goes up to before or onto target depending
     const targetX = r.type==='wall' ? (r as any).beforeX : r.finalX
     const targetY = r.type==='wall' ? (r as any).beforeY : r.finalY
-    // if slide with moved false and no movement, no preview
     if (r.type==='slide' && !(r as any).moved) return null
     while (cx!==targetX || cy!==targetY) {
       cx += dx; cy += dy
       if (cx<0||cx>=GRID_SIZE||cy<0||cy>=GRID_SIZE) break
       path.push({x:cx,y:cy})
     }
-    // for merge/special, include final target cell already in path (handled)
-    // for wall destroyed case, final is wall cell itself, but we stopped before -> add final if destroyed preview not known; keep as path above
-    // If path empty (adjacent immediate hit), still show final
     if (path.length===0) path.push({x:r.finalX, y:r.finalY})
     return { finalX: r.finalX, finalY: r.finalY, type: r.type, path }
   })
 
   let pendingIds = $derived.by<Set<string>>(() => {
     if (!game.pendingMode) return new Set()
-    // all blocks valid for current 4 pending modes, but bombColor highlights same color stronger
-    // keep all valid; selective styling done in Tile via pendingMode
     return new Set(game.blocks.map(b=>b.id))
+  })
+  let bombColorHint: string | null = $state(null)
+  $effect(() => {
+    if (game.pendingMode==='bombColor' && game.blocks.length) {
+      const counts: Record<string,number> = {}
+      for (const b of game.blocks) counts[b.color] = (counts[b.color]??0)+1
+      bombColorHint = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0] ?? null
+    } else bombColorHint = null
   })
 </script>
 
-<div class="candy-orbs min-h-[100dvh] min-h-[100svh] flex flex-col items-center px-3 pt-[max(10px,env(safe-area-inset-top))] pb-[max(10px,env(safe-area-inset-bottom))] gap-3 select-none touch-manipulation">
-  <Header score={game.score} bestScore={game.bestScore} muted={muted} showHelp={showHelp} onToggleMute={handleToggleMute} onToggleHelp={()=> showHelp=!showHelp} />
+<div class="candy-orbs min-h-[100dvh] min-h-[100svh] flex flex-col items-center px-3 sm:px-4 lg:px-6 pt-[max(10px,env(safe-area-inset-top))] pb-[max(10px,env(safe-area-inset-bottom))] gap-3 sm:gap-4 select-none touch-manipulation">
 
-  <div class="w-full max-w-[420px] flex sm:hidden gap-2" aria-live="polite">
-    <div class="flex-1 bg-white border border-orange-200 rounded-2xl px-3 py-2 flex items-center justify-between shadow-sm">
-      <span class="text-[10px] font-black tracking-widest text-[#9a3412]/60">SCORE</span>
-      <span class="game-font font-extrabold text-[#431407] text-lg leading-none">{game.score}</span>
+  {#if view==='menu'}
+    <div class="flex-1 flex flex-col items-center justify-center w-full py-6" in:fade={{duration:200}}>
+      <TitleMenu {hasSave} bestScore={game.bestScore} {muted} onNewGame={handleNewGame} onContinue={handleContinue} onHelp={()=> view='help'} onLeaderboard={()=> { leaderboardEntries=loadLeaderboard(); view='leaderboard'}} onCredits={()=> view='credits'} onToggleMute={handleToggleMute} />
+      {#if showOnboard}
+        <Onboarding onDismiss={dismissOnboard} />
+      {/if}
     </div>
-    <div class="flex-1 bg-white border border-orange-200 rounded-2xl px-3 py-2 flex items-center justify-between shadow-sm">
-      <span class="text-[10px] font-black tracking-widest text-[#9a3412]/60">BEST</span>
-      <span class="game-font font-extrabold text-[#431407] text-lg leading-none">{game.bestScore}</span>
+  {:else if view==='help'}
+    <div class="w-full max-w-[420px] sm:max-w-[560px] pt-2 flex flex-col gap-3" in:fade={{duration:160}}>
+      <button type="button" onclick={()=> view='menu'} class="self-start bg-white border border-orange-200 rounded-xl px-3 py-2 text-xs font-black shadow-sm">← Menu</button>
+      <Help showHelp={true} />
+      <button type="button" onclick={()=> view='menu'} class="w-full bg-white border-2 border-orange-200 rounded-2xl py-3 font-black text-sm shadow-sm">Chiudi</button>
     </div>
-  </div>
-
-  <Help showHelp={showHelp} />
-
-  <div bind:this={gridEl} role="grid" aria-label="Griglia di gioco 8x8" class="w-full max-w-[420px] aspect-square bg-[#fffbeb] border-2 border-[#fed7aa] rounded-[28px] p-[7px] shadow-[0_18px_40px_rgba(124,45,18,0.14),0_6px_14px_rgba(124,45,18,0.08)] relative overflow-hidden {shake ? 'animate-[candyShake_420ms_ease]' : ''} {game.pendingMode ? 'ring-2 ' + (game.pendingMode==='x2' ? 'ring-violet-300' : game.pendingMode==='jolly' ? 'ring-pink-300' : game.pendingMode==='bombColor' ? 'ring-rose-300' : 'ring-cyan-300') : ''}"
-    style="touch-action:none"
-  >
-    <div class="absolute inset-[7px] grid gap-1" style="grid-template-columns: repeat({GRID_SIZE}, minmax(0,1fr)); grid-template-rows: repeat({GRID_SIZE}, minmax(0,1fr));">
-      {#each Array(GRID_SIZE*GRID_SIZE) as _}
-        <div class="bg-white/85 border border-orange-100 rounded-[14px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"></div>
-      {/each}
+  {:else if view==='leaderboard'}
+    <div class="w-full flex flex-col items-center pt-2" in:fade={{duration:160}}>
+      <Leaderboard entries={leaderboardEntries} onBack={()=> view='menu'} />
     </div>
+  {:else if view==='credits'}
+    <div class="w-full flex flex-col items-center pt-2" in:fade={{duration:160}}>
+      <Credits onBack={()=> view='menu'} />
+    </div>
+  {:else}
+    <!-- GAME VIEW -->
+    <GameHeader score={game.score} bestScore={game.bestScore} {muted} onMenu={handleGoMenu} onToggleMute={handleToggleMute} />
 
-    <DragTrail trail={trail} swipeDir={swipeDir} gridEl={gridEl} />
-    <ParticleLayer bind:this={particleLayer} gridEl={gridEl} />
-
-    {#if preview}
-      <!-- path dots -->
-      {#each preview.path as p (p.x + '-' + p.y)}
-        <div class="absolute rounded-[14px] pointer-events-none z-[6] border-2 border-dashed {preview.type==='merge' ? 'bg-emerald-400/20 border-emerald-400/50' : preview.type==='special' ? 'bg-fuchsia-400/20 border-fuchsia-400/50' : preview.type==='wall' ? 'bg-stone-400/20 border-stone-400/50' : 'bg-orange-200/40 border-orange-300/60'}"
-          style="{cellPos(p.x,p.y)}; transition: opacity 120ms ease;"></div>
-      {/each}
-      <!-- ghost at final -->
-      <div class="absolute rounded-[14px] pointer-events-none z-[6] border-[3px] bg-white/55 backdrop-blur-[1px] flex items-center justify-center {preview.type==='merge' ? 'border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]' : preview.type==='special' ? 'border-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.45)]' : preview.type==='wall' ? 'border-stone-500' : 'border-orange-400/70 border-dashed'}"
-        style="{cellPos(preview.finalX, preview.finalY)}">
-        <span class="text-[11px] font-black {preview.type==='merge' ? 'text-emerald-700' : preview.type==='special' ? 'text-fuchsia-700' : preview.type==='wall' ? 'text-stone-600' : 'text-orange-600/70'}">{preview.type==='merge' ? '＋' : preview.type==='special' ? '★' : preview.type==='wall' ? '🧱' : '→'}</span>
+    <div bind:this={gridEl} role="grid" aria-label="Griglia di gioco 8x8" aria-busy={animating} class="w-full max-w-[420px] sm:max-w-[560px] aspect-square bg-[#fffbeb] border-2 sm:border-[2.5px] border-[#fed7aa] rounded-[28px] sm:rounded-[32px] p-[7px] sm:p-[8px] shadow-[0_18px_40px_rgba(124,45,18,0.14),0_6px_14px_rgba(124,45,18,0.08)] relative overflow-hidden {shake ? 'animate-[candyShake_420ms_ease]' : ''} {game.pendingMode ? 'ring-2 ' + (game.pendingMode==='x2' ? 'ring-violet-300' : game.pendingMode==='jolly' ? 'ring-pink-300' : game.pendingMode==='bombColor' ? 'ring-rose-300' : 'ring-cyan-300') : ''}"
+      style="touch-action:none"
+    >
+      <div class="absolute inset-[7px] sm:inset-[8px] grid" style="grid-template-columns: repeat({GRID_SIZE}, minmax(0,1fr)); grid-template-rows: repeat({GRID_SIZE}, minmax(0,1fr)); gap: var(--grid-gap);">
+        {#each Array(GRID_SIZE*GRID_SIZE) as _}
+          <div class="bg-white/78 backdrop-blur-[1px] border border-orange-100/70 rounded-[14px] sm:rounded-[16px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"></div>
+        {/each}
       </div>
-    {/if}
 
-    {#if flash}
-      <div class="absolute inset-0 bg-white/80 z-20 pointer-events-none animate-[flash_120ms_ease] rounded-[28px]"></div>
-    {/if}
-    <div class="absolute inset-[7px]">
-      {#each game.blocks as b (b.id)}
-        {@const isPop = popIds.has(b.id)}
-        {@const isSpawn = spawnIds.has(b.id)}
-        {@const isPending = pendingIds.has(b.id)}
-        {@const isVibrating = false}
-        {@const tier = b.value >= 16 ? 5 : b.value >=8 ? 4 : b.value >=4?3: b.value>=1?2:1}
-        <Tile block={b} isPop={isPop} isSpawn={isSpawn} isVibrating={isVibrating} isPending={isPending} pendingMode={game.pendingMode} bannerIcon={bannerIcon} tier={tier} posStyle={cellPos(b.x,b.y)} onPointerDown={handlePointerDown} />
-      {/each}
-      {#each game.specials as s (s.id)}
-        <SpecialTile special={s} posStyle={cellPos(s.x,s.y)} />
-      {/each}
+      <DragTrail trail={trail} swipeDir={swipeDir} gridEl={gridEl} />
+      <ParticleLayer bind:this={particleLayer} gridEl={gridEl} />
 
-      {#each scorePops as p (p.id)}
-        <div class="absolute z-30 pointer-events-none flex flex-col items-center -translate-x-1/2 {p.kind==='boom' ? 'animate-[candyBoom_900ms_cubic-bezier(.34,1.56,.64,1)_forwards]' : 'animate-[candyFloat_900ms_ease_forwards]'}"
-          style="left: calc({p.x} * ((100% - 28px)/8 + 4px) + ((100% - 28px)/8)/2); top: calc({p.y} * ((100% - 28px)/8 + 4px));">
-          <span class="game-font font-black {p.kind==='boom' ? 'text-[18px] text-white bg-gradient-to-br from-rose-500 to-amber-400 border-2 border-white shadow-[0_6px_16px_rgba(244,63,94,0.4)] rounded-full px-3 py-1' : p.kind==='star' ? 'text-[13px] text-[#431407] bg-white border border-orange-200 rounded-full px-2 py-0.5 shadow-md' : 'text-[15px] text-white bg-[#431407] border border-white/20 rounded-full px-2.5 py-0.5 shadow-[0_6px_14px_rgba(0,0,0,0.25)]'} leading-none">{p.main}</span>
-          {#if p.sub}
-            <span class="mt-0.5 game-font font-black text-[10px] leading-none {p.kind==='boom' ? 'text-amber-900 bg-white rounded-full px-1.5 py-0.5 border border-amber-200' : 'text-white bg-black/70 rounded-full px-1.5 py-0.5'}">{p.sub}</span>
-          {/if}
+      {#if preview}
+        {#each preview.path as p (p.x + '-' + p.y)}
+          <div class="absolute rounded-[14px] sm:rounded-[16px] pointer-events-none z-[6] border-2 {preview.type==='merge' ? 'bg-emerald-400/18 border-emerald-400/40' : preview.type==='special' ? 'bg-fuchsia-400/18 border-fuchsia-400/40' : preview.type==='wall' ? 'bg-stone-400/16 border-stone-400/35' : 'bg-orange-300/22 border-orange-300/40'}"
+            style="{cellPos(p.x,p.y)}; transition: opacity 120ms ease;"></div>
+        {/each}
+        <div class="absolute rounded-[14px] sm:rounded-[16px] pointer-events-none z-[6] border-[2.5px] bg-white/62 backdrop-blur-[2px] flex items-center justify-center {preview.type==='merge' ? 'border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]' : preview.type==='special' ? 'border-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.45)]' : preview.type==='wall' ? 'border-stone-500' : 'border-orange-400/60'}"
+          style="{cellPos(preview.finalX, preview.finalY)}">
+          <span class="text-[12px] sm:text-[13px] font-black {preview.type==='merge' ? 'text-emerald-700' : preview.type==='special' ? 'text-fuchsia-700' : preview.type==='wall' ? 'text-stone-600' : 'text-orange-600/80'}">{preview.type==='merge' ? '＋' : preview.type==='special' ? '★' : preview.type==='wall' ? '🧱' : '→'}</span>
         </div>
-      {/each}
+      {/if}
+
+      {#if flash}
+        <div class="absolute inset-0 bg-white/80 z-20 pointer-events-none animate-[flash_120ms_ease] rounded-[28px]"></div>
+      {/if}
+      <div class="absolute inset-[7px] sm:inset-[8px]">
+        {#each game.blocks as b (b.id)}
+          {@const isPop = popIds.has(b.id)}
+          {@const isSpawn = spawnIds.has(b.id)}
+          {@const rawPending = pendingIds.has(b.id)}
+          {@const isBombDim = game.pendingMode==='bombColor' && bombColorHint && b.color !== bombColorHint}
+          {@const isPending = rawPending && !isBombDim}
+          {@const isDimmed = isBombDim}
+          {@const tier = b.value >= 16 ? 5 : b.value >=8 ? 4 : b.value >=4?3: b.value>=1?2:1}
+          <div class="{isDimmed ? 'opacity-45 grayscale-[0.25] saturate-50' : ''} contents">
+          <Tile block={b} isPop={isPop} isSpawn={isSpawn} isVibrating={false} isPending={isPending} pendingMode={game.pendingMode} bannerIcon={bannerIcon} tier={tier} posStyle={cellPos(b.x,b.y)} onPointerDown={handlePointerDown} />
+          </div>
+        {/each}
+        {#each game.specials as s (s.id)}
+          <SpecialTile special={s} posStyle={cellPos(s.x,s.y)} />
+        {/each}
+
+        {#each scorePops as p (p.id)}
+          <div class="absolute z-30 pointer-events-none flex flex-col items-center -translate-x-1/2 {p.kind==='boom' ? 'animate-[candyBoom_900ms_cubic-bezier(.34,1.56,.64,1)_forwards]' : 'animate-[candyFloat_900ms_ease_forwards]'}"
+            style="left: calc({p.x} * ((100% - 28px)/8 + 4px) + ((100% - 28px)/8)/2); top: calc({p.y} * ((100% - 28px)/8 + 4px));">
+            <span class="game-font font-black {p.kind==='boom' ? 'text-[18px] text-white bg-gradient-to-br from-rose-500 to-amber-400 border-2 border-white shadow-[0_6px_16px_rgba(244,63,94,0.4)] rounded-full px-3 py-1' : p.kind==='star' ? 'text-[13px] text-[#431407] bg-white border border-orange-200 rounded-full px-2 py-0.5 shadow-md' : 'text-[15px] text-white bg-[#431407] border border-white/20 rounded-full px-2.5 py-0.5 shadow-[0_6px_14px_rgba(0,0,0,0.25)]'} leading-none">{p.main}</span>
+            {#if p.sub}
+              <span class="mt-0.5 game-font font-black text-[10px] leading-none {p.kind==='boom' ? 'text-amber-900 bg-white rounded-full px-1.5 py-0.5 border border-amber-200' : 'text-white bg-black/70 rounded-full px-1.5 py-0.5'}">{p.sub}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+
+      {#if game.gameOver}
+        <div class="absolute inset-0 bg-[#fff7ed]/88 backdrop-blur-[6px] flex flex-col items-center justify-center gap-3 p-6 text-center z-30" in:fade={{duration:220}} out:fade={{duration:140}}>
+          <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-rose-400 to-amber-300 flex items-center justify-center text-2xl sm:text-3xl shadow">🍭</div>
+          <div class="game-font text-2xl sm:text-3xl font-black text-[#431407]">Game Over</div>
+          <div class="text-sm font-bold text-[#9a3412]/70">Griglia piena!</div>
+          <div class="grid grid-cols-2 gap-2 w-full max-w-[280px]">
+            <div class="bg-white border border-orange-200 rounded-2xl px-3 py-2 shadow-sm text-center">
+              <div class="text-[9px] font-black tracking-widest text-[#9a3412]/60">SCORE</div><div class="game-font font-black text-[#431407] tabular-nums">{game.score}</div>
+            </div>
+            <div class="bg-white border border-orange-200 rounded-2xl px-3 py-2 shadow-sm text-center">
+              <div class="text-[9px] font-black tracking-widest text-[#9a3412]/60">BEST</div><div class="game-font font-black text-[#431407] tabular-nums">{game.bestScore}</div>
+            </div>
+          </div>
+          <div class="text-[11px] font-bold text-[#9a3412]/55">{game.blocks.length} blocchi · max {Math.max(0,...game.blocks.map(b=>b.value))}</div>
+          <div class="flex gap-2 mt-1">
+            <button type="button" onclick={handleNewGame} class="bg-gradient-to-b from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white font-black px-6 py-3 rounded-2xl shadow-[0_10px_18px_rgba(244,63,94,0.3)] border-2 border-white active:scale-95 transition focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:outline-none">Rigioca</button>
+            <button type="button" onclick={()=> view='menu'} class="bg-white border-2 border-orange-200 rounded-2xl px-5 py-3 font-black text-sm shadow-sm active:scale-95 focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:outline-none">Menu</button>
+          </div>
+        </div>
+      {/if}
     </div>
 
-    {#if game.gameOver}
-      <div class="absolute inset-0 bg-[#fff7ed]/85 backdrop-blur-[6px] flex flex-col items-center justify-center gap-3 p-6 text-center z-30" in:fade={{duration:220}} out:fade={{duration:140}}>
-        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-400 to-amber-300 flex items-center justify-center text-2xl shadow">🍭</div>
-        <div class="game-font text-2xl font-black text-[#431407]">Game Over</div>
-        <div class="text-sm font-bold text-[#9a3412]/70">Griglia piena!</div>
-        <div class="text-[13px] bg-white border border-orange-200 rounded-2xl px-4 py-2 shadow-sm">Score <span class="font-black text-[#431407]">{game.score}</span> · Best <span class="font-black text-[#431407]">{game.bestScore}</span></div>
-        <button type="button" onclick={handleNewGame} class="mt-1 bg-gradient-to-b from-rose-400 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white font-black px-7 py-3 rounded-2xl shadow-[0_10px_18px_rgba(244,63,94,0.3)] border-2 border-white active:scale-95 transition">Ricomincia</button>
+    <!-- combo fixed-height slot below grid: prevents layout shift -->
+    {@const showCombo = game.combo > 1 || game.comboMult > 1.01}
+    <div class="w-full max-w-[420px] sm:max-w-[560px] h-[40px] sm:h-[44px] flex items-center justify-center shrink-0" aria-live="polite" aria-atomic="true">
+      <div class="w-full flex justify-center transition-opacity duration-200 {showCombo ? 'opacity-100' : 'opacity-0 pointer-events-none'}" aria-hidden={!showCombo}>
+        <ComboBar combo={game.combo} multiplier={game.comboMult} />
+      </div>
+    </div>
+
+    {#if game.pendingMode}
+      <div class="w-full max-w-[420px] sm:max-w-[560px]">
+        <PendingBanner mode={game.pendingMode} onCancel={handleCancelPending} />
       </div>
     {/if}
-  </div>
 
-  {#if game.pendingMode}
-    <PendingBanner mode={game.pendingMode} onCancel={handleCancelPending} />
-  {/if}
+    <!-- minimal game controls -->
+    <div class="w-full max-w-[420px] sm:max-w-[560px] grid grid-cols-[72px_1fr_72px] gap-2 items-center">
+      <button type="button" onclick={handleUndo} disabled={!canUndoNow} aria-label="Annulla mossa" class="bg-white border-2 border-orange-200 rounded-2xl py-3 font-black text-sm shadow-sm active:scale-[0.98] transition flex items-center justify-center disabled:opacity-40 disabled:grayscale focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:outline-none min-h-[44px]">
+        ↩ Undo
+      </button>
+      <div class="flex items-center justify-center gap-1.5 text-[11px] font-black tracking-widest text-[#9a3412]/45 text-center leading-none select-none">
+        <span>TRASCINA</span><span class="inline-block animate-[hintNudge_1.2s_ease_infinite]">→</span>
+      </div>
+      <button type="button" onclick={handleGoMenu} class="bg-white border-2 border-orange-200 rounded-2xl py-3 font-black text-sm shadow-sm active:scale-[0.98] transition focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:outline-none min-h-[44px]">Menu</button>
+    </div>
 
-
-  <div class="w-full max-w-[420px] grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
-    <button type="button" onclick={handleUndo} disabled={!canUndoNow} class="bg-white border-2 border-orange-200 rounded-2xl py-3 font-black text-sm shadow-sm active:scale-[0.98] transition flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:grayscale">
-      ↩ Undo
-    </button>
-    <div class="text-[10px] font-black tracking-widest text-[#9a3412]/50 text-center leading-none">TRASCINA<br/><span class="text-[11px]">PER MUOVERE</span></div>
-    <button type="button" onclick={handleNewGame} class="bg-gradient-to-b from-[#431407] to-[#7c2d12] text-[#fffbeb] border-2 border-white rounded-2xl py-3 font-black text-sm shadow-sm active:scale-[0.98] transition">Nuova</button>
-  </div>
-
-  <footer class="w-full max-w-[420px] text-[10px] font-bold tracking-wide text-[#9a3412]/45 text-center px-2 leading-relaxed">
-    PWA installabile · {game.blocks.length} blocchi · {game.specials.length} speciali {#if game.pendingMode}· {game.pendingMode}{/if}
-  </footer>
-
-  {#if showOnboard}
-    <Onboarding onDismiss={dismissOnboard} />
+    {#if showPause}
+      <PauseSheet onResume={handleResume} onRestart={handleRestartFromPause} onExit={handleExitToMenu} />
+    {/if}
   {/if}
 </div>

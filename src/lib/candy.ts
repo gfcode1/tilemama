@@ -23,8 +23,32 @@ export function candyTileClass(color: string, value: number, jolly?: boolean, vi
 }
 
 export function candyValueSize(value: number) {
-  if (value >= 16) return 'text-[17px] tracking-tight'
-  if (value >= 8) return 'text-[18px] tracking-tight'
-  if (value >= 4) return 'text-[17px]'
-  return 'text-[15px]'
+  if (value >= 16) return 'text-[17px] tracking-tight sm:text-[18px]'
+  if (value >= 8) return 'text-[18px] tracking-tight sm:text-[19px]'
+  if (value >= 4) return 'text-[17px] sm:text-[18px]'
+  return 'text-[15px] sm:text-[16px]'
+}
+
+export type SpecialKind = string
+export interface SpecialMeta { hex: string; bg: string; icon: string; label: string; aria: string; timerMs: number }
+export const SPECIAL_META: Record<string, SpecialMeta> = {
+  star: { hex:'#f0abfc', bg:'from-fuchsia-400 to-fuchsia-600 border-fuchsia-200', icon:'★', label:'Stella', aria:'Stella bonus', timerMs: 3000 },
+  x2: { hex:'#a78bfa', bg:'from-violet-400 to-violet-600 border-violet-200', icon:'×2', label:'×2', aria:'Moltiplicatore x2', timerMs: 3000 },
+  jolly: { hex:'#f472b6', bg:'from-pink-400 to-pink-600 border-pink-200', icon:'🌈', label:'Jolly', aria:'Jolly arcobaleno', timerMs: 3000 },
+  bombColor: { hex:'#fb7185', bg:'from-rose-400 to-rose-600 border-rose-200', icon:'💣', label:'Bomba', aria:'Bomba colore', timerMs: 3000 },
+  laser: { hex:'#f43f5e', bg:'from-rose-600 to-red-600 border-rose-200', icon:'—', label:'Laser', aria:'Laser riga', timerMs: 3000 },
+  wall: { hex:'#a8a29e', bg:'from-stone-400 to-stone-600 border-stone-200', icon:'🧱', label:'Muro', aria:'Muro', timerMs: 5000 },
+  vortex: { hex:'#a78bfa', bg:'from-violet-500 to-violet-700 border-violet-200', icon:'🌀', label:'Vortex', aria:'Vortice', timerMs: 3000 },
+  shuffle: { hex:'#fbbf24', bg:'from-amber-400 to-amber-600 border-amber-200', icon:'🔀', label:'Shuffle', aria:'Rimescola', timerMs: 3000 },
+  clone: { hex:'#34d399', bg:'from-emerald-400 to-emerald-600 border-emerald-200', icon:'➕', label:'Clone', aria:'Clona blocco', timerMs: 3000 },
+}
+export function specialMeta(kind: string): SpecialMeta { return SPECIAL_META[kind] ?? SPECIAL_META.star }
+export function pendingMeta(mode: string | null) {
+  const m: Record<string,{ring:string; glow:string; icon:string; text:string; bg:string}> = {
+    x2: { ring:'ring-violet-300', glow:'shadow-[0_0_14px_rgba(167,139,250,0.55)]', icon:'×2', text:'Tocca un blocco per raddoppiarlo!', bg:'from-violet-400 to-violet-600' },
+    jolly: { ring:'ring-pink-300', glow:'shadow-[0_0_14px_rgba(244,114,182,0.55)]', icon:'🌈', text:'Tocca per renderlo Jolly!', bg:'from-pink-400 to-pink-600' },
+    bombColor: { ring:'ring-rose-300', glow:'shadow-[0_0_14px_rgba(251,113,133,0.55)]', icon:'💣', text:'Tocca per eliminare quel colore!', bg:'from-rose-400 to-rose-600' },
+    clone: { ring:'ring-emerald-300', glow:'shadow-[0_0_14px_rgba(52,211,153,0.55)]', icon:'➕', text:'Tocca per clonarlo!', bg:'from-emerald-400 to-emerald-600' },
+  }
+  return m[mode ?? ''] ?? { ring:'ring-cyan-300', glow:'shadow-[0_0_14px_rgba(34,211,238,0.45)]', icon:'×2', text:'Scegli un blocco', bg:'from-cyan-400 to-cyan-600' }
 }

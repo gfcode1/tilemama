@@ -18,6 +18,13 @@
   --candy-blue-deep: #0284c7;
   --candy-shadow: 0 18px 40px rgba(124, 45, 18, 0.14), 0 6px 14px rgba(124, 45, 18, 0.1);
   --candy-shadow-tile: 0 10px 18px rgba(124, 45, 18, 0.18), 0 2px 0 rgba(0, 0, 0, 0.08);
+  --radius-cell: 14px;
+  --radius-grid: 28px;
+  --radius-pill: 999px;
+  --grid-gap: clamp(4px, 1.1vw, 6px);
+  --grid-pad: clamp(6px, 1.6vw, 10px);
+  --font-display: 'Fredoka', 'Nunito', sans-serif;
+  --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
 }
 
 @theme {
