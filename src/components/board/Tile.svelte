@@ -3,6 +3,13 @@
   import { backOut } from 'svelte/easing';
   import { candyTileClass, candyValueSize } from '../../lib/candy';
   import type { Block } from '../../lib/types';
+  import icon1 from '../../assets/icons/1.png';
+  import icon2 from '../../assets/icons/2.png';
+  import icon4 from '../../assets/icons/4.png';
+  import icon8 from '../../assets/icons/8.png';
+  import icon16 from '../../assets/icons/16.png';
+
+  const iconMap: Record<number, string> = { 1: icon1, 2: icon2, 4: icon4, 8: icon8, 16: icon16 };
 
   let { block, isPop = false, isSpawn = false, isVibrating = false, bannerIcon = '', tier = 1, posStyle = '', onPointerDown }: {
     block: Block;
@@ -14,6 +21,15 @@
     posStyle: string;
     onPointerDown: (e: PointerEvent, id: string) => void;
   } = $props();
+
+  let iconSrc = $derived(iconMap[block.value] ?? null);
+  let iconSize = $derived(
+    block.value >= 16 ? 'w-[90%] h-[90%] max-w-[56px] max-h-[56px]' :
+    block.value >= 8 ? 'w-[88%] h-[88%] max-w-[54px] max-h-[54px]' :
+    block.value >= 4 ? 'w-[86%] h-[86%] max-w-[52px] max-h-[52px]' :
+    block.value >= 2 ? 'w-[82%] h-[82%] max-w-[50px] max-h-[50px]' :
+    'w-[78%] h-[78%] max-w-[48px] max-h-[48px]'
+  );
 </script>
 
 <button
@@ -26,7 +42,11 @@
 >
   <span class="tile-highlight absolute inset-0 rounded-[12px] pointer-events-none"></span>
   <span class="tile-gloss absolute inset-0 rounded-[12px] pointer-events-none"></span>
-  <span class="relative game-font {candyValueSize(block.value)} leading-none drop-shadow-[0_1px_0_rgba(0,0,0,0.18)] {isPop ? 'animate-[candyPop_320ms_ease]' : ''}">{block.value}</span>
+  {#if iconSrc}
+    <img src={iconSrc} alt={String(block.value)} width="48" height="48" class="relative {iconSize} object-contain drop-shadow-[0_1px_0_rgba(0,0,0,0.18)] pointer-events-none select-none {isPop ? 'animate-[candyPop_320ms_ease]' : ''}" draggable="false" loading="eager" decoding="async" />
+  {:else}
+    <span class="relative game-font {candyValueSize(block.value)} leading-none drop-shadow-[0_1px_0_rgba(0,0,0,0.18)] {isPop ? 'animate-[candyPop_320ms_ease]' : ''}">{block.value}</span>
+  {/if}
   {#if block.jolly}
     <span class="absolute -top-1 -left-1 text-[9px] bg-gradient-to-br from-pink-400 to-pink-600 text-white rounded-full w-[18px] h-[18px] flex items-center justify-center font-black shadow border border-white">🌈</span>
   {/if}
