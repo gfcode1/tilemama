@@ -52,6 +52,9 @@ export const WALL_DURATION_MS = 5000
 export const SPECIAL_DURATION_MS = 3000
 export const VIRUS_INTERVAL_MS = 3000
 
+export const EXPLOSION_VALUE = 32
+export const EXPLOSION_SPAWN_COUNT = 4
+
 export type Cell = Block | Special | null
 
 export function isSpecial(c: Cell): c is Special {

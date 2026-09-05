@@ -1,4 +1,4 @@
-import { COLORS, GRID_SIZE, type Block, type Color, type Dir, type Special, type SpecialKind, type MultiplierMode, type PendingMode, DIRS, isBlock, isSpecial, isWall, PENDING_KINDS, WALL_DURATION_MS, SPECIAL_DURATION_MS, WALL_HP, VIRUS_INTERVAL_MS } from './types'
+import { COLORS, GRID_SIZE, type Block, type Color, type Dir, type Special, type SpecialKind, type MultiplierMode, type PendingMode, DIRS, isBlock, isSpecial, isWall, PENDING_KINDS, WALL_DURATION_MS, SPECIAL_DURATION_MS, WALL_HP, VIRUS_INTERVAL_MS, EXPLOSION_VALUE } from './types'
 
 let idCounter = 0
 function uid() {
@@ -360,7 +360,7 @@ export class Engine {
       scoreGain = gain
       this.score += gain
 
-      if (sum === 64) {
+      if (sum >= EXPLOSION_VALUE) {
         this.removeAt(block.x, block.y)
         exploded = true
         for (const c of COLORS) this.spawnBlock(c, 1)
@@ -475,7 +475,7 @@ export class Engine {
     if (mode === 'x2') {
       const newVal = block.value * 2
       block.value = newVal
-      if (newVal >= 64) {
+      if (newVal >= EXPLOSION_VALUE) {
         this.removeAt(block.x, block.y)
         exploded = true
         for (const c of COLORS) this.spawnBlock(c, 1)

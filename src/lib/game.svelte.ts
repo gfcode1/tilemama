@@ -1,5 +1,5 @@
 import { Engine } from './engine'
-import { load, save } from './persist'
+import { loadPersisted, savePersisted } from '../services/persistence'
 import type { Block, Special, MultiplierMode, PendingMode } from './types'
 
 export const engine = new Engine()
@@ -43,12 +43,12 @@ function persist() {
   if (persistTimer) return
   persistTimer = window.setTimeout(() => {
     persistTimer = null
-    save({ grid: engine.grid as any, score: engine.score, bestScore, gameOver: engine.gameOver, pendingMode: engine.pendingMode, pendingMultiplier: engine.pendingMode, pendingSafeX5: engine.pendingSafeX5 } as any)
+    savePersisted({ grid: engine.grid as any, score: engine.score, bestScore, gameOver: engine.gameOver, pendingMode: engine.pendingMode as any, pendingMultiplier: engine.pendingMode as any, pendingSafeX5: engine.pendingSafeX5 } as any)
   }, 50)
 }
 
 export function initGame() {
-  const saved = load() as any
+  const saved = loadPersisted() as any
   if (saved && saved.grid?.length === 8) {
     try {
       engine.fromJSON({ grid: saved.grid as any, score: saved.score, gameOver: saved.gameOver, pendingMode: saved.pendingMode ?? saved.pendingMultiplier, pendingMultiplier: saved.pendingMode ?? saved.pendingMultiplier, pendingSafeX5: saved.pendingSafeX5 } as any)
@@ -74,7 +74,7 @@ export function newGame() {
   version++
   specialsTick++
   sync()
-  save({ grid: engine.grid as any, score: 0, bestScore, gameOver: false, pendingMode: null, pendingMultiplier: null, pendingSafeX5: false } as any)
+  savePersisted({ grid: engine.grid as any, score: 0, bestScore, gameOver: false, pendingMode: null, pendingMultiplier: null, pendingSafeX5: false } as any)
 }
 
 export function canUndo(): boolean { return engine.canUndo() }

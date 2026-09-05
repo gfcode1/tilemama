@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light;
+  --candy-bg: #fff7ed;
+  --candy-bg-2: #ffedd5;
+  --candy-grid: #fffbeb;
+  --candy-grid-border: #fed7aa;
+  --candy-cell: rgba(255, 255, 255, 0.85);
+  --candy-cell-border: rgba(251, 146, 60, 0.14);
+  --candy-ink: #431407;
+  --candy-muted: #9a3412;
+  --candy-green: #34d399;
+  --candy-green-deep: #059669;
+  --candy-red: #fb7185;
+  --candy-red-deep: #e11d48;
+  --candy-yellow: #fde68a;
+  --candy-yellow-deep: #f59e0b;
+  --candy-blue: #7dd3fc;
+  --candy-blue-deep: #0284c7;
+  --candy-shadow: 0 18px 40px rgba(124, 45, 18, 0.14), 0 6px 14px rgba(124, 45, 18, 0.1);
+  --candy-shadow-tile: 0 10px 18px rgba(124, 45, 18, 0.18), 0 2px 0 rgba(0, 0, 0, 0.08);
+}
+
+@theme {
+  --color-candy-bg: var(--candy-bg);
+  --color-candy-ink: var(--candy-ink);
+}

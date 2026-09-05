@@ -1,0 +1,15 @@
+export const GAME_CONFIG = {
+  gridSize: 8,
+  initialBlocksPerColor: 4,
+  explosionValue: 32,
+  explosionSpawnCount: 4,
+  starIntervalMs: 10000,
+  bonusMinDelayMs: 8000,
+  bonusMaxDelayMs: 13000,
+  specialDurationMs: 3000,
+  wallDurationMs: 5000,
+  wallHp: 2,
+  virusIntervalMs: 3000,
+  cleanupIntervalMs: 250,
+  virusTickMs: 1000,
+} as const;

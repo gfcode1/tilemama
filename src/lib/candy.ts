@@ -1,8 +1,8 @@
 export function tierFor(value: number): 1|2|3|4|5 {
-  if (value >= 32) return 5
-  if (value >= 16) return 4
-  if (value >= 8) return 3
-  if (value >= 4) return 2
+  if (value >= 16) return 5
+  if (value >= 8) return 4
+  if (value >= 4) return 3
+  if (value >= 2) return 2
   return 1
 }
 
@@ -24,8 +24,8 @@ export function candyTileClass(color: string, value: number, jolly?: boolean, vi
 }
 
 export function candyValueSize(value: number) {
-  if (value >= 32) return 'text-[18px] tracking-tight'
-  if (value >= 16) return 'text-[17px]'
-  if (value >= 8) return 'text-[16px]'
+  if (value >= 16) return 'text-[18px] tracking-tight'
+  if (value >= 8) return 'text-[17px]'
+  if (value >= 4) return 'text-[16px]'
   return 'text-[15px]'
 }
