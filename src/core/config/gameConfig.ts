@@ -1,7 +1,7 @@
 export const GAME_CONFIG = {
   gridSize: 8,
   initialBlocksPerColor: 4,
-  explosionValue: 32,
+  explosionValue: 16,
   explosionSpawnCount: 4,
   starIntervalMs: 10000,
   bonusMinDelayMs: 8000,

@@ -239,7 +239,7 @@
         sfx.explode()
         triggerShake()
         burstAt(origin, null, 44, 1.05)
-        pushScorePop(res.finalX,res.finalY,'32!')
+        pushScorePop(res.finalX,res.finalY,'16!')
       }
       if (res.hitWall) {
         if (res.wallDestroyed) sfx.wallBreak(); else sfx.wallHit()
@@ -352,7 +352,7 @@
         {@const isPop = popIds.has(b.id)}
         {@const isSpawn = spawnIds.has(b.id)}
         {@const isVibrating = !!game.pendingMode}
-        {@const tier = b.value >= 16 ? 5 : b.value >=8 ? 4 : b.value >=4 ?3: b.value>=2?2:1}
+        {@const tier = b.value >= 8 ? 5 : b.value >=4 ? 4 : b.value >=2?3: b.value>=1?2:1}
         <Tile block={b} isPop={isPop} isSpawn={isSpawn} isVibrating={isVibrating} bannerIcon={bannerIcon} tier={tier} posStyle={cellPos(b.x,b.y)} onPointerDown={handlePointerDown} />
       {/each}
       {#each game.specials as s (s.id)}
