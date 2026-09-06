@@ -2,8 +2,9 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import { fade } from 'svelte/transition'
   import confetti from 'canvas-confetti'
-  import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine } from './lib/game.svelte'
-  import { GRID_SIZE } from './lib/types'
+  import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine, tapSpecial } from './lib/game.svelte'
+  import { GRID_SIZE, DIRS } from './lib/types'
+  import type { Dir } from './lib/types'
   import { sfx, isMuted, toggleMute } from './lib/sfx'
   import { GameScheduler } from './services/scheduler'
   import { resolveMove } from './core/engine/MoveResolver'
@@ -24,6 +25,18 @@
   import Leaderboard from './components/menu/Leaderboard.svelte'
   import Credits from './components/menu/Credits.svelte'
 
+  function angleToDir8(dx:number, dy:number): Dir {
+    const a = Math.atan2(dy, dx) * 180 / Math.PI
+    if (a > -22.5 && a <= 22.5) return 'E'
+    if (a > 22.5 && a <= 67.5) return 'SE'
+    if (a > 67.5 && a <= 112.5) return 'S'
+    if (a > 112.5 && a <= 157.5) return 'SW'
+    if (a > 157.5 || a <= -157.5) return 'W'
+    if (a > -157.5 && a <= -112.5) return 'NW'
+    if (a > -112.5 && a <= -67.5) return 'N'
+    return 'NE'
+  }
+
   type View = 'menu' | 'game' | 'help' | 'leaderboard' | 'credits'
 
   let drag = $state<{ id: string; sx: number; sy: number; cx: number; cy: number } | null>(null)
@@ -38,7 +51,7 @@
   let flash = $state(false)
   let muted = $state(isMuted())
   let showOnboard = $state(false)
-  let swipeDir = $state<'N'|'S'|'E'|'W'| null>(null)
+  let swipeDir = $state<Dir | null>(null)
 
   let view = $state<View>('menu')
   let hasSave = $state(false)
@@ -258,8 +271,7 @@
     const dx = e.clientX - drag.sx
     const dy = e.clientY - drag.sy
     if (Math.hypot(dx,dy) > 14) {
-      if (Math.abs(dx) > Math.abs(dy)) swipeDir = dx>0 ? 'E':'W'
-      else swipeDir = dy>0 ? 'S':'N'
+      swipeDir = angleToDir8(dx, dy)
     }
     trail = [...trail, { x: cx, y: cy }].slice(-18)
   }
@@ -297,9 +309,7 @@
     }
 
     if (Math.hypot(dx, dy) < 28) return
-    let dir: 'N'|'S'|'E'|'W' | null = null
-    if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'E' : 'W'
-    else dir = dy > 0 ? 'S' : 'N'
+    let dir: Dir | null = angleToDir8(dx, dy)
     if (!dir) return
     animating = true
     const before = game.blocks.find(b=>b.id===id)
@@ -356,6 +366,33 @@
     setTimeout(() => animating = false, 200)
   }
   function handlePointerCancel() { drag = null; trail=[]; swipeDir=null; }
+
+  function handleSpecialTap(s: any) {
+    if (view !== 'game' || game.gameOver || animating) return
+    if (game.pendingMode) { sfx.error(); triggerShake(true); return }
+    // avoid tap immediately after drag end
+    const res: any = tapSpecial(s.id)
+    if (!res) { sfx.error(); triggerShake(true); return }
+    const origin = posToOrigin(s.x, s.y)
+    if (res.hitWall) {
+      if (res.wallDestroyed) { sfx.wallBreak(); triggerShake(true); burstAt(origin, '#a8a29e', 28, 0.65); pushScorePop(s.x, s.y, 'CRACK!', undefined, 'boom') }
+      else { sfx.wallHit(); triggerShake(true); burstAt(origin, '#d6d3d1', 12, 0.6) }
+      try { navigator.vibrate?.(28) } catch {}
+      return
+    }
+    if (res.hitSpecial) {
+      const k = res.hitSpecialKind
+      if (res.activatedPending) {
+        sfx.pending()
+        burstAt(origin, pendingColor(res.activatedPending), 32, 0.9)
+        try { navigator.vibrate?.(80) } catch {}
+      } else if (k==='star') { sfx.star(); burstKind(origin, 'star', 32); pushScorePop(s.x,s.y,'★ +4', undefined, 'star') }
+      else if (k==='laser') { sfx.laser(); burstKind(origin, 'laser', 34) }
+      else if (k==='vortex') { sfx.vortex(); burstKind(origin, 'vortex', 30) }
+      else if (k==='shuffle') { sfx.shuffle(); burstKind(origin, 'shuffle', 30) }
+      else { sfx.bonus(); burstKind(origin, k??'star', 26) }
+    }
+  }
 
   function handleCancelPending() { cancelPending(); sfx.tap() }
 
@@ -421,8 +458,7 @@
     const r: any = resolveMove(block as any, swipeDir as any, g)
     const path: {x:number;y:number}[] = []
     let cx = block.x, cy = block.y
-    const dx = swipeDir==='E'?1:swipeDir==='W'?-1:0
-    const dy = swipeDir==='S'?1:swipeDir==='N'?-1:0
+    const { dx, dy } = DIRS[swipeDir as Dir]
     const targetX = r.type==='wall' ? (r as any).beforeX : r.finalX
     const targetY = r.type==='wall' ? (r as any).beforeY : r.finalY
     if (r.type==='slide' && !(r as any).moved) return null
@@ -495,14 +531,14 @@
         {/each}
         <div class="absolute rounded-[14px] sm:rounded-[16px] pointer-events-none z-[6] border-[2.5px] bg-white/62 backdrop-blur-[2px] flex items-center justify-center {preview.type==='merge' ? 'border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]' : preview.type==='special' ? 'border-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.45)]' : preview.type==='wall' ? 'border-stone-500' : 'border-orange-400/60'}"
           style="{cellPos(preview.finalX, preview.finalY)}">
-          <span class="text-[12px] sm:text-[13px] font-black {preview.type==='merge' ? 'text-emerald-700' : preview.type==='special' ? 'text-fuchsia-700' : preview.type==='wall' ? 'text-stone-600' : 'text-orange-600/80'}">{preview.type==='merge' ? '＋' : preview.type==='special' ? '★' : preview.type==='wall' ? '🧱' : '→'}</span>
+           <span class="text-[12px] sm:text-[13px] font-black {preview.type==='merge' ? 'text-emerald-700' : preview.type==='special' ? 'text-fuchsia-700' : preview.type==='wall' ? 'text-stone-600' : 'text-orange-600/80'}">{preview.type==='merge' ? '＋' : preview.type==='special' ? '★' : preview.type==='wall' ? '🧱' : ({N:'↑',S:'↓',E:'→',W:'←',NE:'↗',NW:'↖',SE:'↘',SW:'↙'}[swipeDir as string] ?? '→')}</span>
         </div>
       {/if}
 
       {#if flash}
         <div class="absolute inset-0 bg-white/80 z-20 pointer-events-none animate-[flash_120ms_ease] rounded-[28px]"></div>
       {/if}
-      <div class="absolute inset-[7px] sm:inset-[8px]">
+      <div class="absolute inset-[7px] sm:inset-[8px] overflow-visible">
         {#each game.blocks as b (b.id)}
           {@const isPop = popIds.has(b.id)}
           {@const isSpawn = spawnIds.has(b.id)}
@@ -516,7 +552,7 @@
           </div>
         {/each}
         {#each game.specials as s (s.id)}
-          <SpecialTile special={s} posStyle={cellPos(s.x,s.y)} />
+          <SpecialTile special={s} posStyle={cellPos(s.x,s.y)} onTap={handleSpecialTap} />
         {/each}
 
         {#each scorePops as p (p.id)}

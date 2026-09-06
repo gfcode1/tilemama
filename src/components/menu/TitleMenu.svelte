@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { titleSprite } from '../../lib/sprites';
   let { hasSave, bestScore, muted, onNewGame, onContinue, onHelp, onLeaderboard, onCredits, onToggleMute }: {
     hasSave: boolean; bestScore: number; muted: boolean;
     onNewGame: () => void; onContinue: () => void; onHelp: () => void; onLeaderboard: () => void; onCredits: () => void; onToggleMute: () => void;
@@ -7,9 +8,8 @@
 
 <div class="w-full max-w-[360px] flex flex-col items-center gap-4 py-6">
   <div class="flex flex-col items-center gap-2">
-    <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-400 to-amber-300 border-2 border-white shadow-[0_10px_24px_rgba(251,113,133,0.35)] flex items-center justify-center text-white font-black text-2xl game-font">T</div>
-    <h1 class="game-font text-[28px] leading-none font-extrabold tracking-tight text-[#431407]">Tile<span class="text-[#fb7185]">Mama</span></h1>
-    <div class="text-[11px] font-extrabold tracking-[0.16em] text-[#9a3412]/60">CANDY POP</div>
+    <img src={titleSprite} alt="TileMama" width="320" height="120" class="w-[200px] sm:w-[240px] h-auto object-contain drop-shadow-[0_10px_24px_rgba(124,45,18,0.12)]" decoding="async" loading="eager" />
+    <div class="text-[11px] font-extrabold tracking-[0.16em] text-[#9a3412]/60 -mt-1">CANDY POP</div>
     {#if bestScore > 0}
       <div class="mt-1 bg-white border border-orange-200 rounded-full px-3 py-1 text-xs font-black text-[#431407] shadow-sm tabular-nums">BEST {bestScore}</div>
     {/if}

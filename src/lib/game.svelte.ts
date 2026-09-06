@@ -1,6 +1,6 @@
 import { Engine } from './engine'
 import { loadPersisted, savePersisted } from '../services/persistence'
-import type { Block, Special, MultiplierMode, PendingMode } from './types'
+import type { Block, Special, Dir, MultiplierMode, PendingMode } from './types'
 import { ComboState } from '../core/combo/ComboState'
 
 export const engine = new Engine()
@@ -86,6 +86,47 @@ export function newGame() {
   savePersisted({ grid: engine.grid as any, score: 0, bestScore, gameOver: false, pendingMode: null, pendingMultiplier: null, pendingSafeX5: false } as any)
 }
 
+export function tapSpecial(specialId: string) {
+  if (gameOver) return null
+  if (engine.pendingMode) return null
+  const s = engine.specials.get(specialId)
+  if (!s) return null
+  const now = Date.now()
+  comboHistory = [combo.snapshot()]
+  engine.pushHistory()
+  const res = engine.tapSpecial(specialId)
+  if (res && (res.moved || res.hitSpecial || res.hitWall)) {
+    const isScoring = res.merged || res.hitSpecial || res.exploded
+    if (isScoring && res.hitSpecialKind) {
+      const { combo: c, multiplier } = combo.onMerge(now)
+      ;(res as any).combo = c
+      ;(res as any).multiplier = multiplier
+    } else if (res.hitWall && res.wallDestroyed) {
+      const { combo: c, multiplier } = combo.onMerge(now)
+      ;(res as any).combo = c
+      ;(res as any).multiplier = multiplier
+    }
+    score = engine.score
+    if (score > bestScore) bestScore = score
+    gameOver = engine.gameOver
+    version++
+    if (res.hitSpecial || res.exploded || res.activatedPending || res.hitWall) specialsTick++
+    sync()
+    persist()
+  } else if (res && res.hitWall && !res.wallDestroyed) {
+    // cracked wall from tap — still sync hp without scoring
+    version++
+    specialsTick++
+    sync()
+    persist()
+  } else if (res === null) {
+    engine.undo()
+    const prev = comboHistory.pop()
+    if (prev) combo.restore(prev)
+  }
+  return res
+}
+
 export function canUndo(): boolean { return engine.canUndo() }
 
 export function undoMove(): boolean {
@@ -104,7 +145,7 @@ export function undoMove(): boolean {
   return ok
 }
 
-export function doMove(blockId: string, dir: 'N'|'S'|'E'|'W') {
+export function doMove(blockId: string, dir: Dir) {
   if (gameOver) return null
   if (engine.pendingMode) return null
   const now = Date.now()

@@ -8,7 +8,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-[11px] sm:text-xs leading-relaxed text-[#7c2d12]">
       <div class="bg-[#fffbeb] border border-orange-100 rounded-xl p-2.5">
         <div class="font-black text-[#431407] text-xs mb-1">↔︎ Swipe</div>
-        Scorri fino a muro/blocco. Anteprima ghost mostra destino.
+        Scorri in 8 direzioni (anche diagonale) fino a muro/blocco. Anteprima ghost mostra destino.
       </div>
       <div class="bg-[#fffbeb] border border-orange-100 rounded-xl p-2.5">
         <div class="font-black text-[#431407] text-xs mb-1">Merge</div>

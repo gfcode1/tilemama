@@ -338,7 +338,6 @@ export class Engine {
   }
 
   private applyLaser(cx: number, cy: number, movingBlockId: string) {
-    // remove all blocks in same row and column except the moving block
     const toRemove: {x:number,y:number}[] = []
     for (let x = 0; x < GRID_SIZE; x++) {
       if (x === cx) continue
@@ -351,6 +350,85 @@ export class Engine {
       if (c && isBlock(c) && c.id !== movingBlockId) toRemove.push({x:cx,y})
     }
     for (const p of toRemove) this.removeAt(p.x, p.y)
+  }
+
+  private applyLaserAt(cx: number, cy: number) {
+    const toRemove: {x:number,y:number}[] = []
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const c = this.grid[cy][x]
+      if (c && isBlock(c)) toRemove.push({x,y:cy})
+    }
+    for (let y = 0; y < GRID_SIZE; y++) {
+      if (y === cy) continue
+      const c = this.grid[y][cx]
+      if (c && isBlock(c)) toRemove.push({x:cx,y})
+    }
+    for (const p of toRemove) this.removeAt(p.x, p.y)
+  }
+
+  /** Direct tap/click on a special — same effects as sliding onto it, but without moving a block. */
+  tapSpecial(specialId: string): MoveResult | null {
+    if (this.gameOver) return null
+    if (this.pendingMode) return null
+    const special = this.specials.get(specialId)
+    if (!special) return null
+
+    const { x, y, kind } = special as Special
+    const k: SpecialKind = (kind ?? 'star') as SpecialKind
+
+    // wall tap = 1 damage, consistent with slide
+    if (k === 'wall') {
+      const hp = (special as Special).hp ?? WALL_HP
+      const newHp = hp - 1
+      if (newHp <= 0) {
+        this.specials.delete(special.id)
+        this.grid[y][x] = null
+        return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, finalX: x, finalY: y, hitWall: true, wallDestroyed: true, hitSpecialKind: 'wall' }
+      } else {
+        ;(special as Special).hp = newHp
+        return { moved: false, merged: false, hitSpecial: false, exploded: false, scoreGain: 0, gameOver: this.gameOver, finalX: x, finalY: y, hitWall: true, wallDestroyed: false, hitSpecialKind: 'wall' }
+      }
+    }
+
+    // remove special from grid
+    this.specials.delete(special.id)
+    this.grid[y][x] = null
+
+    if (PENDING_KINDS.has(k)) {
+      const pending = kindToPending(k)
+      if (pending) {
+        this.pendingMode = pending
+        return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, activatedPending: pending, hitSpecialKind: k }
+      }
+    }
+
+    if (k === 'star') {
+      for (const c of COLORS) this.spawnBlock(c, 1)
+      const over = this.freeCells().length === 0
+      if (over) this.gameOver = true
+      return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, hitSpecialKind: 'star' }
+    }
+    if (k === 'laser') {
+      this.applyLaserAt(x, y)
+      const over = this.freeCells().length === 0
+      if (over) this.gameOver = true
+      return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, hitSpecialKind: 'laser' }
+    }
+    if (k === 'vortex') {
+      const blocks = [...this.blocks.values()]
+      if (blocks.length) {
+        const b = blocks[Math.floor(Math.random() * blocks.length)]
+        this.applyVortex(b)
+      }
+      return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, hitSpecialKind: 'vortex' }
+    }
+    if (k === 'shuffle') {
+      this.applyShuffle()
+      return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, hitSpecialKind: 'shuffle' }
+    }
+
+    for (const c of COLORS) this.spawnBlock(c, 1)
+    return { moved: true, merged: false, hitSpecial: true, exploded: false, scoreGain: 0, gameOver: this.gameOver, removedSpecialId: specialId, finalX: x, finalY: y, hitSpecialKind: k }
   }
 
   private applyVortex(block: Block) {

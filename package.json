@@ -29,6 +29,7 @@
     "eslint-plugin-svelte": "^3.23.0",
     "jsdom": "^30.0.1",
     "prettier": "^3.9.6",
+    "sharp": "^0.35.4",
     "svelte": "^5.56.10",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",

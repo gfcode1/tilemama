@@ -1,5 +1,5 @@
 <script lang="ts">
-  let { trail = [], swipeDir = null, gridEl }: { trail: {x:number,y:number}[], swipeDir: 'N'|'S'|'E'|'W'|null, gridEl: HTMLDivElement | null } = $props();
+  let { trail = [], swipeDir = null, gridEl }: { trail: {x:number,y:number}[], swipeDir: import('../../lib/types').Dir | null, gridEl: HTMLDivElement | null } = $props();
 
   let canvas: HTMLCanvasElement | null = $state(null);
   let ro: ResizeObserver | null = null;

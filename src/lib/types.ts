@@ -1,12 +1,18 @@
+import { GAME_CONFIG } from '../core/config/gameConfig'
+
 export type Color = 'green' | 'red' | 'yellow' | 'blue'
 export const COLORS: Color[] = ['green', 'red', 'yellow', 'blue']
 
-export type Dir = 'N' | 'S' | 'E' | 'W'
+export type Dir = 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW'
 export const DIRS: Record<Dir, { dx: number; dy: number }> = {
   N: { dx: 0, dy: -1 },
   S: { dx: 0, dy: 1 },
   W: { dx: -1, dy: 0 },
   E: { dx: 1, dy: 0 },
+  NE: { dx: 1, dy: -1 },
+  NW: { dx: -1, dy: -1 },
+  SE: { dx: 1, dy: 1 },
+  SW: { dx: -1, dy: 1 },
 }
 
 export type Block = {
@@ -44,9 +50,9 @@ export type Special = {
 }
 
 export const WALL_HP = 2
-export const WALL_DURATION_MS = 5000
-export const SPECIAL_DURATION_MS = 3000
-export const VIRUS_INTERVAL_MS = 3000
+export const WALL_DURATION_MS = GAME_CONFIG.wallDurationMs
+export const SPECIAL_DURATION_MS = GAME_CONFIG.specialDurationMs
+export const VIRUS_INTERVAL_MS = GAME_CONFIG.virusIntervalMs
 
 export const EXPLOSION_VALUE = 32
 export const EXPLOSION_SPAWN_COUNT = 4

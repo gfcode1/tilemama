@@ -29,6 +29,19 @@ export function candyValueSize(value: number) {
   return 'text-[15px] sm:text-[16px]'
 }
 
+export const TILE_PASTEL: Record<string, string> = {
+  green: 'bg-emerald-100 border-emerald-200/80',
+  red: 'bg-rose-100 border-rose-200/80',
+  yellow: 'bg-amber-100 border-amber-200/80',
+  blue: 'bg-sky-100 border-sky-200/80',
+  jolly: 'bg-gradient-to-br from-fuchsia-100 to-violet-100 border-fuchsia-200/80',
+}
+
+export function tilePastelBg(color: string, jolly?: boolean): string {
+  if (jolly) return TILE_PASTEL.jolly
+  return TILE_PASTEL[color] ?? 'bg-white border-orange-200'
+}
+
 export type SpecialKind = string
 export interface SpecialMeta { hex: string; bg: string; icon: string; label: string; aria: string; timerMs: number }
 export const SPECIAL_META: Record<string, SpecialMeta> = {
