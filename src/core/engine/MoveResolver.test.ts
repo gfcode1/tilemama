@@ -26,8 +26,9 @@ describe('MoveResolver', () => {
     const grid: any = Array.from({length:8},()=>Array(8).fill(null));
     grid[0][1]=target;
     const r = resolveMove(block,'E',grid);
-    expect(r.type).toBe('slide');
-    if (r.type==='slide') expect(r.finalX).toBe(0);
+    // strict: bump adiacente senza merge è mossa vuota (type none), non slide
+    expect(r.type).toBe('none');
+    if (r.type==='none') expect(r.finalX).toBe(0);
   });
   it('jolly merges any color same value', () => {
     const block = b(0,0,'red',2,'a',true);

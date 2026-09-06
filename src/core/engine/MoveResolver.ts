@@ -33,9 +33,9 @@ export function resolveMove(
     if (isBlock(cell)) {
       const canMerge = (cell.color === block.color || block.jolly || (cell as Block).jolly) && cell.value === block.value;
       if (canMerge) return { type: 'merge', target: cell as Block, finalX: nx, finalY: ny };
-      // blocco incompatibile: scivola fino alla cella prima dell'ostacolo
-      // se c'è spazio (cx != origin) -> moved true con spostamento
-      // se adiacente (cx == origin) -> bump valido anche senza spostamento (richiesta utente: mossa valida)
+      // blocco incompatibile: strict — bump adiacente senza spostamento è mossa vuota (type none)
+      const moved = cx !== block.x || cy !== block.y;
+      if (!moved) return { type: 'none', finalX: cx, finalY: cy };
       return { type: 'slide', finalX: cx, finalY: cy, moved: true };
     }
   }

@@ -154,12 +154,15 @@ export function doMove(blockId: string, dir: Dir) {
   engine.pushHistory()
   const res = engine.move(blockId, dir, peek)
   if (res.moved || res.merged || res.hitSpecial || res.hitWall) {
-    const isScoring = res.merged || res.hitSpecial || res.exploded
+    const isScoring = res.merged || res.hitSpecial || res.exploded || (!!res.hitWall && !!res.wallDestroyed)
     if (isScoring) {
       const { combo: c, multiplier } = combo.onMerge(now)
       ;(res as any).combo = c
       ;(res as any).multiplier = multiplier
       // engine already scored with peek (which equals multiplier), no extra patch needed
+    } else {
+      // strict: slide vuota o muro crepato (hitWall senza distruzione) chiude combo pur restando mossa valida
+      combo.onMiss()
     }
     score = engine.score
     if (score > bestScore) bestScore = score
