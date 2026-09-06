@@ -61,10 +61,20 @@
   }
 
   export function burst(origin:{x:number;y:number}, kind:string, count:number, color:string|null) {
-    emit(origin, kind, count, color);
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const capped = Math.min(count, 28)
+    emit(origin, kind, capped, color);
+    // second wave for large bursts (replaces double confetti)
+    if (count > 30) {
+      setTimeout(()=> emit(origin, kind, Math.min(12, MAX - particles.length), color), 80)
+    }
   }
 
+  let paused = $state(false)
+  function onVis(){ paused = document.hidden }
+
   function tick() {
+    if (paused) { raf = requestAnimationFrame(tick); return }
     if (!ctx || !canvas) { raf = requestAnimationFrame(tick); return; }
     const r = canvas.getBoundingClientRect();
     ctx.clearRect(0,0,r.width,r.height);
@@ -108,6 +118,7 @@
     ro = new ResizeObserver(syncSize);
     if (gridEl) ro.observe(gridEl);
     raf = requestAnimationFrame(tick);
+    document.addEventListener('visibilitychange', onVis);
   });
   // handle late gridEl binding (Svelte 5 props update after mount)
   $effect(() => {
@@ -117,7 +128,7 @@
       try { ro.observe(gridEl); } catch {}
     }
   });
-  onDestroy(() => { cancelAnimationFrame(raf); ro?.disconnect(); });
+  onDestroy(() => { cancelAnimationFrame(raf); ro?.disconnect(); document.removeEventListener('visibilitychange', onVis); });
 
   // expose globally for App.svelte via bind
   export { emit };

@@ -3,11 +3,11 @@
   import { backOut } from 'svelte/easing';
   import type { Special } from '../../lib/types';
   import { specialMeta } from '../../lib/candy';
-  import { specialSprite } from '../../lib/sprites';
+  import { specialSpriteStyle } from '../../lib/sprites';
 
   let { special, posStyle, onTap }: { special: Special; posStyle: string; onTap?: (s: Special) => void } = $props();
   let meta = $derived(specialMeta(special.kind));
-  let spriteSrc = $derived(specialSprite(special.kind, special.hp));
+  let spriteStyle = $derived(specialSpriteStyle(special.kind, special.hp));
   let isCracked = $derived(special.kind==='wall' && (special.hp ?? 2)===1);
 
   // size+anim per kind: wall più contenuto, star/laser più imponente
@@ -43,7 +43,12 @@
   onclick={() => onTap?.(special)}
   onkeydown={(e)=> { if(e.key==='Enter'||e.key===' ') { e.preventDefault(); onTap?.(special) } }}
 >
-  <img src={spriteSrc} alt={meta.aria} width="96" height="96" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 {sizeCls} max-w-none object-contain drop-shadow-[0_6px_14px_rgba(0,0,0,0.22)] drop-shadow-[0_2px_0_rgba(0,0,0,0.12)] pointer-events-none select-none" draggable="false" loading="eager" decoding="async" />
+  <div
+    role="img"
+    aria-label={meta.aria}
+    class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 {sizeCls} max-w-none pointer-events-none select-none drop-shadow-[0_6px_14px_rgba(0,0,0,0.22)] drop-shadow-[0_2px_0_rgba(0,0,0,0.12)]"
+    style="{spriteStyle}"
+  ></div>
   <span class="absolute -bottom-1 left-1/2 -translate-x-1/2 z-10 text-[7px] sm:text-[8px] font-black tracking-widest leading-none bg-black/60 text-white rounded-full px-1.5 py-0.5 backdrop-blur-[1px] border border-white/20 whitespace-nowrap">{meta.label}</span>
   {#if special.kind==='wall'}<span class="absolute -top-1 left-1/2 -translate-x-1/2 z-10 text-[7px] bg-white text-stone-700 rounded-full px-1.5 py-0.5 font-black border border-stone-200 shadow">{special.hp ?? 2}♥</span>{/if}
   <svg class="absolute inset-0 w-full h-full pointer-events-none rounded-[14px]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">

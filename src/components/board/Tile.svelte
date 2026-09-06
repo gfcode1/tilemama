@@ -3,7 +3,7 @@
   import { backOut } from 'svelte/easing';
   import { pendingMeta, tilePastelBg } from '../../lib/candy';
   import type { Block } from '../../lib/types';
-  import { tileSprite } from '../../lib/sprites';
+  import { tileSpriteStyle } from '../../lib/sprites';
 
   let { block, isPop = false, isSpawn = false, isVibrating = false, isPending = false, pendingMode = null, bannerIcon = '', tier = 1, posStyle = '', onPointerDown }: {
     block: Block;
@@ -23,7 +23,7 @@
     !isPending || !pm ? '' : `ring-2 ${pm.ring} ${pm.glow}`
   );
 
-  let spriteSrc = $derived(tileSprite(block));
+  let spriteStyle = $derived(tileSpriteStyle(block));
 </script>
 
 <button
@@ -35,7 +35,12 @@
   aria-label="{block.color} {block.value}{block.jolly ? ' jolly' : ''}{block.virus ? ' virus' : ''}"
   aria-pressed={isPending}
 >
-  <img src={spriteSrc} alt="{block.jolly ? 'jolly ' : ''}{block.color} {block.value}" width="128" height="128" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] max-w-none object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.18)] drop-shadow-[0_1px_0_rgba(0,0,0,0.12)] pointer-events-none select-none {isPop ? 'animate-[candyPop_320ms_ease]' : ''}" draggable="false" loading="eager" decoding="async" />
+  <div
+    role="img"
+    aria-label="{block.jolly ? 'jolly ' : ''}{block.color} {block.value}"
+    class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] max-w-none pointer-events-none select-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.18)] drop-shadow-[0_1px_0_rgba(0,0,0,0.12)] {isPop ? 'animate-[candyPop_320ms_ease]' : ''}"
+    style="{spriteStyle}"
+  ></div>
   {#if block.virus}
     <span class="absolute -bottom-1 -right-1 z-10 text-[8px] sm:text-[9px] bg-gradient-to-br from-lime-500 to-lime-600 text-white rounded-full w-[20px] h-[20px] sm:w-[22px] sm:h-[22px] flex items-center justify-center font-black shadow border border-white animate-pulse">☢️</span>
   {/if}

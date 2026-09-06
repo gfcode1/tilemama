@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte'
   import { fade } from 'svelte/transition'
-  import confetti from 'canvas-confetti'
   import { game, initGame, newGame, doMove, spawnStar, spawnBonus, cleanupSpecials, applyPending, cancelPending, tickVirus, canUndo, undoMove, engine, tapSpecial } from './lib/game.svelte'
   import { GRID_SIZE, DIRS } from './lib/types'
   import type { Dir } from './lib/types'
@@ -147,7 +146,7 @@
     refreshHasSave()
     const c=centerOfGrid()
     sfx.pop(); sfx.star()
-    confetti({particleCount:28, spread:70, origin:c, colors:['#fb7185','#34d399','#fde68a','#7dd3fc','#f472b6'], scalar:0.95, zIndex:50})
+    try { (particleLayer as any)?.burst?.(c, 'boom', 24, null) } catch {}
   }
 
   function handleContinue() {
@@ -401,33 +400,17 @@
     const r = gridEl.getBoundingClientRect()
     return { x: (r.left + r.width/2)/window.innerWidth, y: (r.top + r.height/2)/window.innerHeight }
   }
-  function burstAt(origin: {x:number,y:number}, hex: string | null, count:number, spreadMul:number) {
-    const colors = hex ? [hex] : ['#fb7185','#34d399','#fde68a','#7dd3fc','#f472b6','#fbbf24']
-    const capped = Math.min(count, 40)
-    confetti({
-      particleCount: Math.min(capped, 28),
-      spread: 72 * spreadMul,
-      startVelocity: 28,
-      ticks: 150,
-      gravity: 1.02,
-      origin,
-      colors,
-      scalar: 0.92,
-      zIndex: 60,
-    })
-    if (count > 30) {
-      setTimeout(()=> confetti({ particleCount: 16, spread: 120, origin, colors, scalar:0.72, ticks:120, zIndex:60 }), 80)
-    }
+  function burstAt(origin: {x:number,y:number}, hex: string | null, count:number, _spreadMul:number) {
     try {
       const kind = !hex ? 'boom' : 'merge'
-      ;(particleLayer as any)?.burst?.(origin, kind, Math.min(count, 24), hex)
+      ;(particleLayer as any)?.burst?.(origin, kind, Math.min(count, 28), hex)
     } catch {}
   }
   function burstKind(origin:{x:number,y:number}, kind:string, count:number) {
     const map:Record<string,string> = { star:'#f0abfc', laser:'#f43f5e', vortex:'#a78bfa', shuffle:'#fbbf24', wall:'#a8a29e', clone:'#34d399', bombColor:'#fb7185', jolly:'#f472b6', x2:'#a78bfa' }
     const hex = map[kind] ?? null
-    burstAt(origin, hex, count, 0.9)
-    try { (particleLayer as any)?.burst?.(origin, kind==='star'?'star': kind==='laser'?'laser': kind==='vortex'?'vortex': kind==='shuffle'?'shuffle': kind==='wall'?'wall': kind==='bombColor'?'bomb': kind==='clone'?'merge': 'default', Math.min(count, 28), hex) } catch {}
+    try { (particleLayer as any)?.burst?.(origin, kind==='star'?'star': kind==='laser'?'laser': kind==='vortex'?'vortex': kind==='shuffle'?'shuffle': kind==='wall'?'wall': kind==='bombColor'?'bomb': kind==='clone'?'merge': 'default', Math.min(count, 28), hex ?? map[kind] ?? null) } catch {}
+    // single emission only — ParticleLayer handles second wave internally
   }
   function triggerSpecialSpawn(x:number,y:number, kind: string){
     burstKind(posToOrigin(x,y), kind, 14)
