@@ -12,4 +12,13 @@ export const GAME_CONFIG = {
   virusIntervalMs: 3000,
   cleanupIntervalMs: 250,
   virusTickMs: 1000,
+  // achievements / missions
+  missionsPerRun: 3,
+  missionRewardScore: 80,
+  missionRewardCoins: 15,
+  missionRewardMultiplier: 1.5,
+  missionAllBonusScore: 300,
+  missionAllBonusCoins: 50,
+  achievementRewardCoins: 30,
+  achievementRewardScore: 150,
 } as const;

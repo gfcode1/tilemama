@@ -18,11 +18,15 @@
   import Onboarding from './components/modals/Onboarding.svelte'
   import ParticleLayer from './components/effects/ParticleLayer.svelte'
   import ComboBar from './components/hud/ComboBar.svelte'
+  import MissionBar from './components/hud/MissionBar.svelte'
+  import AchievementToast from './components/hud/AchievementToast.svelte'
   import TitleMenu from './components/menu/TitleMenu.svelte'
   import GameHeader from './components/menu/GameHeader.svelte'
   import PauseSheet from './components/menu/PauseSheet.svelte'
   import Leaderboard from './components/menu/Leaderboard.svelte'
   import Credits from './components/menu/Credits.svelte'
+  import Shop from './components/shop/Shop.svelte'
+  import { ACHIEVEMENTS } from './core/config/achievements'
 
   function angleToDir8(dx:number, dy:number): Dir {
     const a = Math.atan2(dy, dx) * 180 / Math.PI
@@ -36,7 +40,7 @@
     return 'NE'
   }
 
-  type View = 'menu' | 'game' | 'help' | 'leaderboard' | 'credits'
+  type View = 'menu' | 'game' | 'help' | 'leaderboard' | 'credits' | 'shop'
 
   let drag = $state<{ id: string; sx: number; sy: number; cx: number; cy: number } | null>(null)
   let trail = $state<{ x: number; y: number }[]>([])
@@ -128,6 +132,20 @@
     }
     if (!go) leaderboardPushedForScore = null
     prevGameOver = go
+  })
+
+  // achievement/mission toasts side-effects (sfx + burst)
+  let prevToastsLen = 0
+  $effect(() => {
+    const len = game.toasts.length
+    if (len > prevToastsLen && len > 0) {
+      const t = game.toasts[game.toasts.length - 1]
+      if (t.kind === 'mission') { sfx.star(); try { navigator.vibrate?.(40) } catch {} }
+      else { sfx.bonus(); try { navigator.vibrate?.([40,30,60]) } catch {} }
+      // burst at center grid
+      try { burstKind(centerOfGrid(), 'star', 18) } catch {}
+    }
+    prevToastsLen = len
   })
 
   function dismissOnboard() {
@@ -472,7 +490,7 @@
 
   {#if view==='menu'}
     <div class="flex-1 flex flex-col items-center justify-center w-full py-6" in:fade={{duration:200}}>
-      <TitleMenu {hasSave} bestScore={game.bestScore} {muted} onNewGame={handleNewGame} onContinue={handleContinue} onHelp={()=> view='help'} onLeaderboard={()=> { leaderboardEntries=loadLeaderboard(); view='leaderboard'}} onCredits={()=> view='credits'} onToggleMute={handleToggleMute} />
+      <TitleMenu hasSave={hasSave} bestScore={game.bestScore} coins={game.coins} {muted} onNewGame={handleNewGame} onContinue={handleContinue} onHelp={()=> view='help'} onLeaderboard={()=> { leaderboardEntries=loadLeaderboard(); view='leaderboard'}} onShop={()=> view='shop'} onCredits={()=> view='credits'} onToggleMute={handleToggleMute} />
       {#if showOnboard}
         <Onboarding onDismiss={dismissOnboard} />
       {/if}
@@ -491,9 +509,14 @@
     <div class="w-full flex flex-col items-center pt-2" in:fade={{duration:160}}>
       <Credits onBack={()=> view='menu'} />
     </div>
+  {:else if view==='shop'}
+    <div class="w-full flex flex-col items-center pt-2" in:fade={{duration:160}}>
+      <Shop onBack={()=> view='menu'} />
+    </div>
   {:else}
     <!-- GAME VIEW -->
-    <GameHeader score={game.score} bestScore={game.bestScore} {muted} onMenu={handleGoMenu} onToggleMute={handleToggleMute} />
+    <GameHeader score={game.score} bestScore={game.bestScore} coins={game.coins} {muted} onMenu={handleGoMenu} onToggleMute={handleToggleMute} />
+    <AchievementToast toasts={game.toasts} />
 
     <div bind:this={gridEl} role="grid" aria-label="Griglia di gioco 8x8" aria-busy={animating} class="w-full max-w-[420px] sm:max-w-[560px] aspect-square bg-[#fffbeb] border-2 sm:border-[2.5px] border-[#fed7aa] rounded-[28px] sm:rounded-[32px] p-[7px] sm:p-[8px] shadow-[0_18px_40px_rgba(124,45,18,0.14),0_6px_14px_rgba(124,45,18,0.08)] relative overflow-hidden {shake ? 'animate-[candyShake_420ms_ease]' : ''} {game.pendingMode ? 'ring-2 ' + (game.pendingMode==='x2' ? 'ring-violet-300' : game.pendingMode==='jolly' ? 'ring-pink-300' : game.pendingMode==='bombColor' ? 'ring-rose-300' : 'ring-cyan-300') : ''}"
       style="touch-action:none"
@@ -579,6 +602,11 @@
       </div>
     </div>
 
+    <!-- MISSIONS BAR — 3 a rotazione per partita -->
+    <div class="w-full max-w-[420px] sm:max-w-[560px]">
+      <MissionBar missions={game.missions} buffActive={game.buffActive} />
+    </div>
+
     {#if game.pendingMode}
       <div class="w-full max-w-[420px] sm:max-w-[560px]">
         <PendingBanner mode={game.pendingMode} onCancel={handleCancelPending} />
@@ -598,6 +626,20 @@
 
     {#if showPause}
       <PauseSheet onResume={handleResume} onRestart={handleRestartFromPause} onExit={handleExitToMenu} />
+      <div class="w-full max-w-[420px] sm:max-w-[560px] bg-white border border-orange-200 rounded-2xl p-3 shadow-sm mt-2">
+        <div class="text-[11px] font-black tracking-widest text-[#9a3412]/60 mb-2">ACHIEVEMENTS · {Object.values(game.achievements).filter((a:any)=>a.completedAt).length}/{ACHIEVEMENTS.length}</div>
+        <div class="grid grid-cols-3 gap-2">
+          {#each ACHIEVEMENTS as a}
+            {@const prog = (game.achievements as any)[a.id]?.progress ?? 0}
+            {@const done = !!(game.achievements as any)[a.id]?.completedAt}
+            <div class="border rounded-xl px-2 py-2 text-center {done ? 'bg-amber-50 border-amber-200' : 'bg-white border-orange-100'}">
+              <div class="text-[14px]">{a.icon}</div>
+              <div class="text-[10px] font-black leading-tight truncate">{a.label}</div>
+              <div class="text-[9px] font-bold text-[#9a3412]/50">{done ? 'Fatto ✓' : `${prog}/${a.target}`}</div>
+            </div>
+          {/each}
+        </div>
+      </div>
     {/if}
   {/if}
 </div>

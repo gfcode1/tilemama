@@ -1,11 +1,14 @@
 <script lang="ts">
-  let { score, bestScore, muted, onMenu, onToggleMute }: {
-    score: number; bestScore: number; muted: boolean;
+  let { score, bestScore, coins, muted, onMenu, onToggleMute }: {
+    score: number; bestScore: number; coins: number; muted: boolean;
     onMenu: () => void; onToggleMute: () => void;
   } = $props();
   let scorePop = $state(false)
+  let coinPop = $state(false)
   let prev = 0
+  let prevCoins = 0
   $effect(()=>{ if(score!==prev){ if(score>prev){ scorePop=true; setTimeout(()=>scorePop=false,220)} prev=score }})
+  $effect(()=>{ if(coins!==prevCoins){ if(coins>prevCoins){ coinPop=true; setTimeout(()=>coinPop=false,220)} prevCoins=coins }})
 </script>
 
 <header class="w-full max-w-[420px] sm:max-w-[560px] flex items-center justify-between gap-2">
@@ -14,6 +17,10 @@
     <div class="bg-white border border-orange-200 rounded-2xl px-3 py-1.5 text-center min-w-[72px] shadow-sm {scorePop ? 'animate-[scorePop_220ms_ease]' : ''}">
       <div class="text-[8px] font-black tracking-widest text-[#9a3412]/60">SCORE</div>
       <div class="game-font font-extrabold text-[#431407] leading-none text-[15px] tabular-nums">{score}</div>
+    </div>
+    <div class="bg-gradient-to-br from-amber-100 to-yellow-50 border border-amber-200 rounded-2xl px-3 py-1.5 text-center min-w-[64px] shadow-sm {coinPop ? 'animate-[scorePop_220ms_ease]' : ''}">
+      <div class="text-[8px] font-black tracking-widest text-[#9a3412]/60">COIN</div>
+      <div class="game-font font-extrabold text-[#431407] leading-none text-[15px] tabular-nums">🪙 {coins}</div>
     </div>
     <div class="bg-white border border-orange-200 rounded-2xl px-3 py-1.5 text-center min-w-[72px] shadow-sm hidden sm:flex flex-col justify-center">
       <div class="text-[8px] font-black tracking-widest text-[#9a3412]/60">BEST</div>
